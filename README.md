@@ -42,7 +42,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  ethos: ^0.1.0
+  ethos: ^0.0.1
 ```
 
 ### Local Development
@@ -453,8 +453,8 @@ MIT License - see [LICENSE](LICENSE) file
 
 ## Author
 
-Manu ([@gearscrafter](https://github.com/gearscrafter))  
-Senior Mobile Developer at Pragma
+[@gearscrafter](https://github.com/gearscrafter)
+Mobile Developer
 
 ## Resources
 
