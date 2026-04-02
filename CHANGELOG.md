@@ -1,4 +1,4 @@
-## 0.1.0 
+## 0.0.1
 
 - Initial MVP with 5 WCAG 2.2 coverage rules (semantics, contrast, touch targets, keyboard, focus)
 - Spec-Driven Development with formal YAML specifications
