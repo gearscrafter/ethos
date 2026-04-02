@@ -1,0 +1,41 @@
+# Development
+.dart_tool/
+build/
+coverage/
+.metadata
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.github/
+.gitignore
+.gitlab-ci.yml
+.travis.yml
+
+# Testing
+test/
+spec_compliance_test.dart
+
+# CI/CD
+.github/workflows/
+
+# Editor config
+.editorconfig
+analysis_options.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*.tmp
+*.bak
+.env
+*.lock

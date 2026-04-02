@@ -1,0 +1,38 @@
+# Dart/Flutter
+.dart_tool/
+.flutter/
+build/
+coverage/
+*.g.dart
+pubspec.lock
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.atom/
+.classpath
+.c9/
+*.launch
+.metadata
+.packages
+.pub-cache/
+.pub/
+
+# CI/CD
+.github/workflows/
+
+# Temporary files
+*.tmp
+*.bak
+.env
+*.lock
