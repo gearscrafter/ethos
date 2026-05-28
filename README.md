@@ -3,7 +3,7 @@
 Measure accessibility coverage in Flutter apps using WCAG 2.2 specifications with Spec-Driven Development.
 
 [![Pub](https://img.shields.io/pub/v/ethos.svg)](https://pub.dev/packages/ethos)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## What is Ethos?
 
@@ -25,14 +25,48 @@ Unlike tools that detect individual issues, Ethos calculates **coverage metrics*
 
 ## Features
 
-- ✅ **WCAG 2.2 Level AA** - 5 core accessibility rules
-- ✅ **Coverage Metrics** - % compliance for each rule
-- ✅ **Formal Specifications** - YAML-based, versionable rules
-- ✅ **CLI Tool** - `ethos -p ./my_app`
-- ✅ **Multiple Formats** - JSON, human-readable, markdown reports
-- ✅ **Compliance Levels** - A, AA, AAA, or NONE
-- ✅ **Extensible** - Add rules by editing YAML
-- ✅ **SDD** - Spec-Driven Development approach
+- ✅ **WCAG 2.2 Alignment**: Focuses on core accessibility metrics mapped to standard specs.
+- ✅ **Honest Static AST Analysis**: Powered by `package:analyzer`, parsing the real syntax tree instead of raw, unreliable regex pattern matching.
+- ✅ **The "Honesty" Architecture**: Explicitly tracks **Indeterminate** results (e.g., dynamic colors, size variables, inherited themes) so they do not pollute your pass/fail ratios with guesswork.
+- ✅ **Spec-Driven Design**: Decouples rules and criteria via YAML specifications loaded and validated dynamically.
+- ✅ **Pluggable Detector Registry**: Easily add, replace, or extend rules without modifying the core analysis pipeline.
+- ✅ **CLI Executable**: Ready for local terminal inspections and CI/CD integration.
+
+---
+
+## Supported Architecture & Rules
+
+Ethos includes 5 built-in rules that walk your Flutter codebase using a robust `RecursiveAstVisitor`:
+
+### 1. Semantic Labels (`wcag_1_3_1_semantics`)
+Ensures custom interactive components have an accessible label.
+- **In-Scope (Denominator)**: Custom gesture widgets (`GestureDetector`, `InkWell`, `InkResponse`) that act as active targets. Excludes elements explicitly hidden via `excludeFromSemantics: true` or handling continuous drag/pan gestures.
+- **Pass (Numerator)**: Wrapped in a `Semantics` widget with a literal, non-empty `label`.
+- **Indeterminate**: Wrapped in `Semantics` but the label is a variable, string interpolation, or runtime method call.
+
+### 2. Minimum Color Contrast (`wcag_1_4_3_contrast`)
+Checks text legibility according to WCAG AA (4.5:1 / 3.0:1) parameters.
+- **In-Scope (Denominator)**: `Text` widgets where both text color and background color are declared inline as resolvable literals.
+- **Pass (Numerator)**: The calculated contrast ratio meets WCAG thresholds.
+- **Indeterminate**: Text colors from `Theme.of(context)`, custom global style variables (`$styles.text.body`), or when the background is inherited from a parent `Container`/`Scaffold`.
+
+### 3. Touch Target Size (`wcag_2_5_5_touch_target`)
+Verifies interactive element targets meet the standard $48 \times 48$ logical pixel minimum.
+- **Pass (Numerator)**: Material controls with built-in size guarantees (`IconButton`, `FloatingActionButton`), or custom gesture nodes explicitly sized via an enclosing `SizedBox` or `Container` with literal dimensions $\ge 48$.
+- **Indeterminate**: Size derived from runtime constraints, intrinsic dimensions, or custom button properties opting out of layout rules (`MaterialTapTargetSize.shrinkWrap`).
+
+### 4. Keyboard Accessibility (`wcag_2_1_1_keyboard`)
+Detects whether interactive workflows are accessible via external inputs.
+- **Denominator**: All interactive nodes.
+- **Pass (Numerator)**: Built-in Material buttons (`ElevatedButton`, `TextButton`, etc.) that handle focus natively, or custom tap targets properly wrapped in a `Focus` node / keyboard listener.
+- **Fail**: A raw `GestureDetector.onTap` completely missing alternative keyboard paths.
+
+### 5. Focus Order (`wcag_2_4_3_focus_order`)
+Ensures multi-input user flows manage the focus traversal sequence.
+- **Context**: Triggered by full `Form` scopes or layouts containing 2 or more focusable input nodes (`TextField`, `Checkbox`, etc.).
+- **Pass (Numerator)**: Layout declares explicit focus management mechanisms via `FocusNode`, `FocusScope`, `FocusTraversalGroup`, or `autofocus`.
+
+---
 
 ## Installation
 

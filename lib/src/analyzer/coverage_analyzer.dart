@@ -1,44 +1,55 @@
 import 'dart:io';
+
 import '../models/spec.dart';
 import '../models/coverage_report.dart';
+import 'ast/widget_visitor.dart';
+import 'detector_registry.dart';
 import 'spec_loader.dart';
 
-/// Main analyzer engine that analyzes Flutter projects to calculate accessibility coverage.
+/// Main analyzer engine. Calculates accessibility coverage for a Flutter
+/// project by parsing every Dart file once with `package:analyzer` and
+/// dispatching each rule to its registered [RuleDetector].
 ///
-/// This class is responsible for:
-/// - Loading accessibility specifications from YAML files
-/// - Scanning Flutter projects for Dart files
-/// - Analyzing code against WCAG 2.2 rules
-/// - Calculating coverage metrics
-/// - Generating comprehensive reports
-///
-/// The analyzer uses pattern matching (regex) to detect accessibility issues
-/// and measure coverage percentages for each rule.
-///
+/// The engine itself contains no rule-specific logic: adding, removing, or
+/// modifying a detector does not touch this class.
 class CoverageAnalyzer {
   final Spec spec;
+  final DetectorRegistry registry;
 
-  CoverageAnalyzer({required this.spec});
+  CoverageAnalyzer({required this.spec, DetectorRegistry? registry})
+      : registry = registry ?? DetectorRegistry.withBuiltIns();
 
-  static Future<CoverageAnalyzer> loadFromFile(String specPath) async {
+  static Future<CoverageAnalyzer> loadFromFile(
+    String specPath, {
+    DetectorRegistry? registry,
+  }) async {
     final spec = await SpecLoader.loadFromFile(specPath);
     SpecLoader.validate(spec);
-    return CoverageAnalyzer(spec: spec);
+    return CoverageAnalyzer(spec: spec, registry: registry);
   }
 
-  static CoverageAnalyzer fromString(String yamlContent) {
+  static CoverageAnalyzer fromString(
+    String yamlContent, {
+    DetectorRegistry? registry,
+  }) {
     final spec = SpecLoader.loadFromString(yamlContent);
     SpecLoader.validate(spec);
-    return CoverageAnalyzer(spec: spec);
+    return CoverageAnalyzer(spec: spec, registry: registry);
   }
 
-  /// Analyzes a Flutter project to calculate accessibility coverage.
+  /// Analyzes a Flutter project against the loaded spec.
+  ///
+  /// Pipeline:
+  ///   1. Discover Dart files (skipping generated / .g.dart / build dirs).
+  ///   2. Parse each file once into a [ParsedFile] (AST + widget list).
+  ///   3. For each rule in the spec, look up its detector and run it.
+  ///   4. Aggregate into a [CoverageReport].
   Future<CoverageReport> analyze({
     required String projectPath,
-    String specVersion = 'v1.0.0',
+    String? specVersion,
   }) async {
     final report = CoverageReport(
-      specVersion: specVersion,
+      specVersion: specVersion ?? spec.version,
       projectPath: projectPath,
       timestamp: DateTime.now(),
       coverage: {},
@@ -55,17 +66,48 @@ class CoverageAnalyzer {
         return report;
       }
 
+      // Parse all files once — every detector reuses the same AST.
+      final parsedFiles = <ParsedFile>[];
+      for (final file in dartFiles) {
+        try {
+          final source = await file.readAsString();
+          parsedFiles.add(parseDartFile(file.path, source));
+        } catch (e) {
+          report.issues.add('Failed to parse ${file.path}: $e');
+        }
+      }
+
+      // Run each rule's detector.
       for (final rule in spec.rules.values) {
-        final coverage = await _calculateRuleCoverage(
-          rule: rule,
-          dartFiles: dartFiles,
+        final detector = registry.find(rule.ruleId);
+        if (detector == null) {
+          report.issues.add(
+            'No detector registered for rule "${rule.ruleId}" — skipping.',
+          );
+          report.coverage[rule.ruleId] = RuleCoverage.calculate(
+            ruleId: rule.ruleId,
+            title: rule.title,
+            matched: 0,
+            total: 0,
+            criticalThreshold: rule.coverageMetric.criticalThreshold,
+          );
+          continue;
+        }
+
+        final result = detector.analyze(rule: rule, files: parsedFiles);
+        report.coverage[rule.ruleId] = RuleCoverage.calculate(
+          ruleId: rule.ruleId,
+          title: rule.title,
+          matched: result.matched,
+          total: result.total,
+          indeterminate: result.indeterminate,
+          criticalThreshold: rule.coverageMetric.criticalThreshold,
+          findings: result.findings,
         );
-        report.coverage[rule.ruleId] = coverage;
       }
 
       report.calculateOverall();
       report.determineComplianceLevel();
-
       return report;
     } catch (e) {
       report.issues.add('Analysis error: $e');
@@ -75,156 +117,34 @@ class CoverageAnalyzer {
     }
   }
 
+  /// Walks [projectPath] recursively, returning every `.dart` file that
+  /// looks like project source. Generated files, build outputs, and the
+  /// pub cache are excluded.
   Future<List<File>> _findDartFiles(String projectPath) async {
     final dir = Directory(projectPath);
     final dartFiles = <File>[];
 
-    try {
-      await for (final entity in dir.list(recursive: true)) {
-        if (entity is File && entity.path.endsWith('.dart')) {
-          if (!entity.path.contains('.g.dart') &&
-              !entity.path.contains('generated')) {
-            dartFiles.add(entity);
-          }
-        }
+    if (!await dir.exists()) return dartFiles;
+
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final path = entity.path;
+      if (!path.endsWith('.dart')) continue;
+
+      // Skip generated / build / pub cache.
+      if (path.endsWith('.g.dart') ||
+          path.endsWith('.freezed.dart') ||
+          path.endsWith('.gr.dart') ||
+          path.contains('${Platform.pathSeparator}generated${Platform.pathSeparator}') ||
+          path.contains('${Platform.pathSeparator}.dart_tool${Platform.pathSeparator}') ||
+          path.contains('${Platform.pathSeparator}build${Platform.pathSeparator}') ||
+          path.contains('${Platform.pathSeparator}.pub-cache${Platform.pathSeparator}')) {
+        continue;
       }
-    } catch (e) {}
+
+      dartFiles.add(entity);
+    }
 
     return dartFiles;
-  }
-
-  Future<RuleCoverage> _calculateRuleCoverage({
-    required Rule rule,
-    required List<File> dartFiles,
-  }) async {
-    int matched = 0;
-    int total = 0;
-
-    for (final file in dartFiles) {
-      try {
-        final content = await file.readAsString();
-        final (ruleMatched, ruleTotal) = _analyzeFileForRule(
-          rule: rule,
-          fileContent: content,
-        );
-        matched += ruleMatched;
-        total += ruleTotal;
-      } catch (e) {}
-    }
-
-    return RuleCoverage.calculate(
-      ruleId: rule.ruleId,
-      title: rule.title,
-      matched: matched,
-      total: total,
-      criticalThreshold: rule.coverageMetric.criticalThreshold,
-    );
-  }
-
-  (int matched, int total) _analyzeFileForRule({
-    required Rule rule,
-    required String fileContent,
-  }) {
-    switch (rule.ruleId) {
-      case 'wcag_1_3_1_semantics_label':
-        return _analyzeSemanticLabels(fileContent);
-      case 'wcag_1_4_3_contrast_minimum':
-        return _analyzeContrast(fileContent);
-      case 'wcag_2_5_5_target_size_enhanced':
-        return _analyzeTouchTargets(fileContent);
-      case 'wcag_2_1_1_keyboard':
-        return _analyzeKeyboardNavigation(fileContent);
-      case 'wcag_2_4_3_focus_order':
-        return _analyzeFocusOrder(fileContent);
-      default:
-        return (0, 0);
-    }
-  }
-
-  (int matched, int total) _analyzeSemanticLabels(String code) {
-    final gesturePattern = RegExp(r'GestureDetector\s*\(');
-    final inkWellPattern = RegExp(r'InkWell\s*\(');
-    final inkResponsePattern = RegExp(r'InkResponse\s*\(');
-
-    final totalCustomInteractive = gesturePattern.allMatches(code).length +
-        inkWellPattern.allMatches(code).length +
-        inkResponsePattern.allMatches(code).length;
-
-    final semanticsLabelPattern = RegExp(r'Semantics\s*\(\s*label\s*:\s*');
-    final withSemantics = semanticsLabelPattern.allMatches(code).length;
-
-    return (withSemantics, totalCustomInteractive);
-  }
-
-  (int matched, int total) _analyzeContrast(String code) {
-    final lowContrastPatterns = [
-      RegExp(r'Colors\.(grey|gray|lightGrey|lightGray|disabled)'),
-      RegExp(r'Color\(0x[89a-fA-F][0-9a-fA-F]{5}\)'),
-    ];
-
-    final textPatterns = [
-      RegExp(r'Text\s*\('),
-      RegExp(r'TextStyle\s*\('),
-      RegExp(r'style\s*:\s*TextStyle'),
-    ];
-
-    final textElements = textPatterns.fold<int>(
-      0,
-      (sum, pattern) => sum + pattern.allMatches(code).length,
-    );
-
-    final lowContrastElements = lowContrastPatterns.fold<int>(
-      0,
-      (sum, pattern) => sum + pattern.allMatches(code).length,
-    );
-
-    final matched = textElements - lowContrastElements;
-
-    return (matched > 0 ? matched : 0, textElements > 0 ? textElements : 0);
-  }
-
-  (int matched, int total) _analyzeTouchTargets(String code) {
-    final interactivePattern = RegExp(
-      r'(GestureDetector|InkWell|ElevatedButton|TextButton|IconButton|FloatingActionButton)\s*\(',
-    );
-    final totalInteractive = interactivePattern.allMatches(code).length;
-
-    final sizePattern = RegExp(r'(width|height)\s*:\s*(4[8-9]|[5-9]\d|\d{3,})');
-    final withGoodSize = sizePattern.allMatches(code).length;
-
-    final materialPattern = RegExp(
-      r'(ElevatedButton|TextButton|IconButton|FloatingActionButton)\s*\(',
-    );
-    final materialWidgets = materialPattern.allMatches(code).length;
-
-    final matched = materialWidgets + (withGoodSize ~/ 2);
-
-    return (matched, totalInteractive > 0 ? totalInteractive : 0);
-  }
-
-  (int matched, int total) _analyzeKeyboardNavigation(String code) {
-    final interactivePattern = RegExp(
-      r'(GestureDetector|InkWell|ElevatedButton|TextButton|IconButton|FloatingActionButton|TextField)\s*\(',
-    );
-    final totalInteractive = interactivePattern.allMatches(code).length;
-
-    final keyboardAccessiblePattern = RegExp(
-      r'(ElevatedButton|TextButton|IconButton|FloatingActionButton|OutlinedButton|TextField)\s*\(',
-    );
-    final keyboardAccessible =
-        keyboardAccessiblePattern.allMatches(code).length;
-
-    return (keyboardAccessible, totalInteractive > 0 ? totalInteractive : 0);
-  }
-
-  (int matched, int total) _analyzeFocusOrder(String code) {
-    final focusPattern = RegExp(r'(FocusScope|FocusNode|autofocus\s*:\s*true)');
-    final withFocusManagement = focusPattern.allMatches(code).length;
-
-    final structurePattern =
-        RegExp(r'(Form|Column|ListView|CustomScrollView)\s*\(');
-    final structuredLayouts = structurePattern.allMatches(code).length;
-
-    return (withFocusManagement, structuredLayouts > 0 ? structuredLayouts : 1);
   }
 }
