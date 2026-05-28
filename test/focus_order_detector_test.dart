@@ -61,7 +61,7 @@ void main() {
     });
 
     test('single input → not counted (focus order trivial)', () {
-      const code = "Widget build() => Column(children: [TextField()]);";
+      const code = 'Widget build() => Column(children: [TextField()]);';
       final result = _run(detector, rule, code);
       expect(result.total, 0);
     });
