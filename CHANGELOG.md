@@ -1,3 +1,7 @@
+### 0.5.1
+
+- Resolve absolute path issue for package_config.json
+
 ### 0.5.0
 
 - **Deep analysis mode:** a new CLI flag and `DeepAnalyzer`
