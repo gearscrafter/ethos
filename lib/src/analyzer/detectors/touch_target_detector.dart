@@ -37,7 +37,6 @@ class TouchTargetDetector implements RuleDetector {
 
     for (final file in files) {
       for (final widget in file.widgets) {
-
         final alias = aliases[widget.type];
         if (alias != null && alias.role == WidgetRole.button) {
           if (alias.sizeGuaranteed) {
@@ -72,8 +71,7 @@ class TouchTargetDetector implements RuleDetector {
                 line: widget.line,
                 column: widget.column,
                 widgetType: widget.type,
-                message:
-                    '${widget.type} touch target is smaller than '
+                message: '${widget.type} touch target is smaller than '
                     '${_minSize.toStringAsFixed(0)}x'
                     '${_minSize.toStringAsFixed(0)} '
                     'logical pixels (WCAG 2.5.5).',
@@ -93,7 +91,6 @@ class TouchTargetDetector implements RuleDetector {
     );
   }
 
-  
   bool _hasShrinkWrapTapTarget(WidgetUsage widget) {
     final arg = widget.arg('tapTargetSize');
     if (arg == null) return false;
@@ -139,8 +136,10 @@ class TouchTargetDetector implements RuleDetector {
   }
 
   String? _ctorName(AstNode node) {
-    if (node is InstanceCreationExpression) return node.constructorName.type.name2.lexeme;
-    if (node is MethodInvocation && node.realTarget == null) return node.methodName.name;
+    if (node is InstanceCreationExpression)
+      return node.constructorName.type.name2.lexeme;
+    if (node is MethodInvocation && node.realTarget == null)
+      return node.methodName.name;
     return null;
   }
 
@@ -148,7 +147,8 @@ class TouchTargetDetector implements RuleDetector {
     final args = _argsOf(node);
     if (args == null) return null;
     for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == name) return arg.expression;
+      if (arg is NamedExpression && arg.name.label.name == name)
+        return arg.expression;
     }
     return null;
   }

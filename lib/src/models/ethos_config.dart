@@ -73,8 +73,7 @@ class EthosConfig {
   }
 
   @override
-  String toString() =>
-      'EthosConfig(${widgetAliases.length} aliases, '
+  String toString() => 'EthosConfig(${widgetAliases.length} aliases, '
       '${ruleOverrides.length} overrides)';
 }
 

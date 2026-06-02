@@ -17,7 +17,6 @@ class HomeScreen extends StatelessWidget {
               child: const Icon(Icons.person),
             ),
           ),
-
           InkWell(
             onTap: () {},
             child: const Padding(
@@ -25,7 +24,6 @@ class HomeScreen extends StatelessWidget {
               child: Icon(Icons.settings),
             ),
           ),
-
           Semantics(
             label: dynamicCta,
             child: GestureDetector(
@@ -33,7 +31,6 @@ class HomeScreen extends StatelessWidget {
               child: const Text('Submit'),
             ),
           ),
-
           ElevatedButton(
             onPressed: () {},
             child: const Text('Save'),

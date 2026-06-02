@@ -1,3 +1,7 @@
+# 0.3.0
+
+- CLI command renamed from `accessibility-coverage` to `ethos`.
+
 # 0.2.0
 
 - Built-in WCAG 2.2 specification with automatic project configuration via `ethos.yaml`; no external spec files required.

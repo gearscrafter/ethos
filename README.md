@@ -28,11 +28,16 @@ Unlike tools that detect individual issues, Ethos calculates **coverage metrics*
 
 - ✅ **WCAG 2.2 alignment** — coverage metrics, not one-off issue lists.
 - ✅ **Honest AST analysis** with `package:analyzer` — no regex, no guessing.
-- ✅ **Indeterminate accounting** — values from themes or runtime variables are reported separately and never inflate pass/fail ratios.
-- ✅ **Built-in spec, zero setup** — the WCAG 2.2 rules ship inside the package. You don't copy any YAML file.
-- ✅ **Optional `ethos.yaml`** — teach Ethos about your own design-system widgets in five minutes.
-- ✅ **Pluggable detector registry** — add or replace rules without touching the core engine.
-- ✅ **CI/CD ready** — JSON, Markdown, and human-readable outputs; exits with code `1` on critical failures.
+- ✅ **Indeterminate accounting** — values from themes or runtime variables are
+  reported separately and never inflate pass/fail ratios.
+- ✅ **Built-in spec, zero setup** — the WCAG 2.2 rules ship inside the package.
+  You don't copy any YAML file.
+- ✅ **Optional `ethos.yaml`** — teach Ethos about your own design-system
+  widgets in five minutes.
+- ✅ **Pluggable detector registry** — add or replace rules without touching the
+  core engine.
+- ✅ **CI/CD ready** — JSON, Markdown, and human-readable outputs; exits with
+  code `1` on critical failures.
 
 ---
 
@@ -63,7 +68,8 @@ void main() async {
 }
 ```
 
-**You do not copy any spec file.** The built-in WCAG 2.2 spec lives inside the package.
+**You do not copy any spec file.** The built-in WCAG 2.2 spec lives inside the
+package.
 
 ---
 
@@ -89,15 +95,20 @@ ethos -p ./my_flutter_app
 
 ## Configuration (optional): `ethos.yaml`
 
-Ethos works out of the box — the built-in spec already covers Flutter's standard widgets (`GestureDetector`, `InkWell`, `IconButton`, `TextField`, etc.).
+Ethos works out of the box — the built-in spec already covers Flutter's
+standard widgets (`GestureDetector`, `InkWell`, `IconButton`, `TextField`,
+etc.).
 
-Most real apps wrap controls in their own design-system components (`CircleIconBtn`, `AppButton`, whatever your team calls them). Ethos can't guess those names, so without config they appear as **indeterminate**. To fix that, drop an `ethos.yaml` next to your `pubspec.yaml`:
+Most real apps wrap controls in their own design-system components
+(`CircleIconBtn`, `AppButton`, whatever your team calls them). Ethos can't
+guess those names, so without config they appear as **indeterminate**. To fix
+that, drop an `ethos.yaml` next to your `pubspec.yaml`:
 
 ```yaml
-# ethos.yaml — OPTIONAL. Ethos auto-detects it, no flag needed.
+# ethos.yaml — OPTIONAL. Ethos auto-detects it; no flag needed.
 
 widget_aliases:
-  # Key = the widget's class name exactly as written in your code.
+  # Key = your widget's class name exactly as written in code.
   CircleIconBtn:
     role: button             # button | text | input
     label_arg: semanticLabel # which arg carries the accessible label
@@ -106,9 +117,9 @@ widget_aliases:
 
   AppButton:
     role: button
-    label_arg: a11yLabel
+    label_arg: a11yLabel     # use whatever your team calls it
 
-# Optional: tighten a threshold without rewriting the whole spec.
+# Optional: tighten a threshold without rewriting the spec.
 # rule_overrides:
 #   wcag_1_4_3_contrast_minimum:
 #     critical_threshold: 95
@@ -116,14 +127,17 @@ widget_aliases:
 
 What each field teaches:
 
-| Field             | Detector              | Effect                                              |
-|-------------------|-----------------------|-----------------------------------------------------|
-| `role: button`    | Semantic Labels, Keyboard, Touch Target | Widget counts as an interactive control. |
-| `label_arg`       | Semantic Labels       | Look for the semantic label in this argument.       |
-| `size_guaranteed` | Touch Target Size     | Auto-PASS — already ≥ 48×48 internally.             |
-| `keyboard_ready`  | Keyboard Accessibility| Auto-PASS — keyboard-operable out of the box.       |
+| Field             | Detector                                | Effect                                        |
+|-------------------|-----------------------------------------|-----------------------------------------------|
+| `role: button`    | Semantic Labels, Keyboard, Touch Target | Widget counts as an interactive control.      |
+| `label_arg`       | Semantic Labels                         | Look for the semantic label in this argument. |
+| `size_guaranteed` | Touch Target Size                       | Auto-PASS — already ≥ 48×48 internally.       |
+| `keyboard_ready`  | Keyboard Accessibility                  | Auto-PASS — keyboard-operable out of the box. |
 
-No `ethos.yaml`? Ethos still runs on the built-in spec. Custom widgets are simply ignored (shown as indeterminate). For a vanilla Flutter project that's already useful. For a project with a design system, the aliases make all the difference.
+No `ethos.yaml`? Ethos still runs on the built-in spec. Custom widgets are
+simply ignored (shown as indeterminate). For a vanilla Flutter project that's
+already useful; for a project with a design system, the aliases make all the
+difference.
 
 ---
 
@@ -135,19 +149,22 @@ Five built-in rules, all backed by a `RecursiveAstVisitor` on real Dart AST.
 
 Custom interactive widgets must have an accessible label.
 
-- **In scope:** `GestureDetector`, `InkWell`, `InkResponse` with tap-like gestures, plus any `role: button` alias from `ethos.yaml`.
-- **Pass:** wrapped in `Semantics(label: '<non-empty literal>')` as ancestor or descendant; or the alias `label_arg` is a non-empty literal.
+- **In scope:** `GestureDetector`, `InkWell`, `InkResponse` with tap-like
+  gestures, plus any `role: button` alias from `ethos.yaml`.
+- **Pass:** wrapped in `Semantics(label: '<non-empty literal>')` as ancestor or
+  descendant; or the alias `label_arg` is a non-empty literal.
 - **Indeterminate:** label is a variable, interpolation, or runtime call.
-- **Excluded automatically:** `excludeFromSemantics: true`, drag/pan-only gestures, `onTap: () {}` (block-parent), tap-to-dismiss patterns.
+- **Excluded automatically:** `excludeFromSemantics: true`, drag/pan-only
+  gestures, `onTap: () {}` (block-parent), tap-to-dismiss patterns.
 
 ```dart
-// ✅ PASS
+// ✅ PASS — Semantics as ancestor
 Semantics(
   label: 'Open profile',
   child: GestureDetector(onTap: () {}, child: Icon(Icons.person)),
 )
 
-// ✅ PASS — descendant Semantics also works
+// ✅ PASS — Semantics as descendant also works
 GestureDetector(
   onTap: () => navigate(),
   child: Semantics(label: 'Go to settings', child: Icon(Icons.settings)),
@@ -159,17 +176,26 @@ GestureDetector(onTap: () => navigate(), child: Icon(Icons.settings))
 
 ### 2. Minimum Color Contrast — `wcag_1_4_3_contrast_minimum` (WCAG 1.4.3 · Level AA)
 
-Text must have at least 4.5:1 contrast (3:1 for large text ≥ 18 pt) using the real WCAG luminance formula.
+Text must have at least 4.5:1 contrast (3:1 for large text ≥ 18 pt) using the
+real WCAG luminance formula.
 
-- **In scope:** `Text` with inline `TextStyle(color:, backgroundColor:)` where both are literal (`Color(0x...)` or `Colors.*`).
-- **Indeterminate:** colors from `Theme.of(context)`, custom style variables, or a missing inline background (the common case in well-structured Flutter code).
+- **In scope:** `Text` with inline `TextStyle(color:, backgroundColor:)` where
+  both are literal (`Color(0x...)` or `Colors.*`).
+- **Indeterminate:** colors from `Theme.of(context)`, custom style variables, or
+  a missing inline background — the common case in well-structured Flutter code.
 
 ```dart
 // ✅ PASS — ratio 21:1
-Text('Hello', style: TextStyle(color: Colors.black, backgroundColor: Colors.white))
+Text('Hello', style: TextStyle(
+  color: Colors.black,
+  backgroundColor: Colors.white,
+))
 
 // ❌ FAIL — ratio ~1.6:1
-Text('Hello', style: TextStyle(color: Color(0xFFCCCCCC), backgroundColor: Colors.white))
+Text('Hello', style: TextStyle(
+  color: Color(0xFFCCCCCC),
+  backgroundColor: Colors.white,
+))
 
 // ⓘ INDETERMINATE — color from theme, cannot verify statically
 Text('Hello', style: theme.textTheme.bodyLarge)
@@ -179,23 +205,31 @@ Text('Hello', style: theme.textTheme.bodyLarge)
 
 Interactive elements must be at least 48×48 logical pixels.
 
-- **Auto-pass:** `IconButton`, `FloatingActionButton` (Flutter guarantees 48×48); aliases with `size_guaranteed: true`.
-- **Verifiable:** custom interactive widget inside a `SizedBox` or `Container` with literal `width`/`height` — pass if both ≥ 48, fail otherwise.
-- **Indeterminate:** size from a variable, intrinsic content, or `tapTargetSize: shrinkWrap`.
+- **Auto-pass:** `IconButton`, `FloatingActionButton` (Flutter guarantees
+  48×48); aliases with `size_guaranteed: true`.
+- **Verifiable:** custom interactive widget inside a `SizedBox` or `Container`
+  with literal `width`/`height` — pass if both ≥ 48, fail otherwise.
+- **Indeterminate:** size from a variable, intrinsic content, or
+  `tapTargetSize: shrinkWrap`.
 
 ### 4. Keyboard Accessibility — `wcag_2_1_1_keyboard` (WCAG 2.1.1 · Level A)
 
 All interactive functionality must be reachable by keyboard.
 
-- **Pass:** Material controls (`ElevatedButton`, `TextField`, `InkWell`, etc.); `GestureDetector` under a `Focus`, `FocusScope`, `Shortcuts`, or `KeyboardListener` ancestor; aliases with `keyboard_ready: true`.
+- **Pass:** Material controls (`ElevatedButton`, `TextField`, `InkWell`, etc.);
+  `GestureDetector` under a `Focus`, `FocusScope`, `Shortcuts`, or
+  `KeyboardListener` ancestor; aliases with `keyboard_ready: true`.
 - **Fail:** `GestureDetector.onTap` with no keyboard path in its ancestor chain.
+- **Excluded:** widgets with `excludeFromSemantics: true` (visual-only wrappers).
 
 ### 5. Focus Order — `wcag_2_4_3_focus_order` (WCAG 2.4.3 · Level A)
 
 Multi-input layouts must declare explicit focus management.
 
-- **In scope:** `Form` widgets, or any layout with 2+ focusable inputs (`TextField`, `Checkbox`, `Radio`, etc.).
-- **Pass:** declares `FocusNode`, `FocusScope`, `FocusTraversalGroup`, or `autofocus: true`.
+- **In scope:** `Form` widgets, or any layout with 2+ focusable inputs
+  (`TextField`, `Checkbox`, `Radio`, etc.).
+- **Pass:** declares `FocusNode`, `FocusScope`, `FocusTraversalGroup`, or
+  `autofocus: true`.
 
 ---
 
@@ -222,7 +256,8 @@ Examples:
 ```
 
 Verbose logs go to **stderr** so `ethos -p . -r json | jq` works cleanly.
-Exit code `1` when any rule is below its critical threshold — useful as a CI gate.
+Exit code `1` when any rule is below its critical threshold — useful as a CI
+gate.
 
 ---
 
@@ -240,7 +275,7 @@ Exit code `1` when any rule is below its critical threshold — useful as a CI g
 ## Library API reference
 
 ```dart
-// Standard entry point
+// Standard entry point — built-in spec + optional ethos.yaml auto-merge
 final analyzer = await CoverageAnalyzer.forProject('./my_app');
 
 // With explicit config file
@@ -253,12 +288,14 @@ final analyzer = await CoverageAnalyzer.forProject(
 final report = await analyzer.analyze();
 
 // Output options
-print(report.overallCoverage);          // double 0–100
-print(report.complianceLevel);          // 'A' | 'AA' | 'AAA' | 'NONE'
-print(report.toJsonString());           // JSON for CI pipelines
+print(report.overallCoverage);   // double 0–100
+print(report.complianceLevel);   // 'A' | 'AA' | 'AAA' | 'NONE'
+print(report.toJsonString());    // JSON for CI pipelines
 ```
 
-Advanced: `CoverageAnalyzer.loadFromFile(specPath, projectPath: ...)` and `.fromString(yaml, projectPath: ...)` load a fully custom spec instead of the built-in.
+Advanced: `CoverageAnalyzer.loadFromFile(specPath, projectPath: ...)` and
+`.fromString(yaml, projectPath: ...)` load a fully custom spec instead of the
+built-in.
 
 ---
 
@@ -267,22 +304,22 @@ Advanced: `CoverageAnalyzer.loadFromFile(specPath, projectPath: ...)` and `.from
 ```
 ethos/
 ├── bin/
-│   └── analyze.dart              # CLI entry point
+│   └── analyze.dart               # CLI entry point
 ├── lib/
-│   ├── ethos.dart                # Public barrel export
+│   ├── ethos.dart                 # Public barrel export
 │   └── src/
 │       ├── models/
-│       │   ├── spec.dart         # Spec, Rule, WidgetAlias, WidgetRole
-│       │   ├── ethos_config.dart # User ethos.yaml model + RuleOverride
+│       │   ├── spec.dart          # Spec, Rule, WidgetAlias, WidgetRole
+│       │   ├── ethos_config.dart  # User ethos.yaml model + RuleOverride
 │       │   └── coverage_report.dart  # CoverageReport, RuleCoverage, Finding
 │       ├── specs/v1/
-│       │   ├── wcag_2_2.yaml         # Source spec — edit this
+│       │   ├── wcag_2_2.yaml          # Source spec — edit this
 │       │   └── wcag_2_2_embedded.dart # Generated constant — do not edit
 │       └── analyzer/
-│           ├── coverage_analyzer.dart # Engine (forProject / analyze)
-│           ├── spec_loader.dart       # Built-in + ethos.yaml merge
+│           ├── coverage_analyzer.dart  # Engine (forProject / analyze)
+│           ├── spec_loader.dart        # Built-in + ethos.yaml merge
 │           ├── detector_registry.dart
-│           ├── rule_detector.dart     # RuleDetector interface
+│           ├── rule_detector.dart      # RuleDetector interface
 │           ├── ast/widget_visitor.dart
 │           ├── utils/color_resolver.dart
 │           └── detectors/
@@ -294,8 +331,8 @@ ethos/
 ├── example/
 │   ├── main.dart
 │   └── fixtures/
-│       ├── ethos.yaml            # Sample widget aliases
-│       └── lib/                  # Sample Dart files (analysis input)
+│       ├── ethos.yaml             # Sample widget aliases
+│       └── lib/                   # Sample Dart files (analysis input only)
 ├── test/
 │   ├── spec_compliance_test.dart
 │   ├── semantic_labels_detector_test.dart
@@ -304,10 +341,11 @@ ethos/
 │   ├── keyboard_detector_test.dart
 │   └── focus_order_detector_test.dart
 └── tool/
-    └── embed_spec.dart           # Regenerates wcag_2_2_embedded.dart
+    └── embed_spec.dart            # Regenerates wcag_2_2_embedded.dart
 ```
 
-If you edit the built-in spec (`lib/src/specs/v1/wcag_2_2.yaml`), regenerate the embedded constant:
+When editing the built-in spec (`lib/src/specs/v1/wcag_2_2.yaml`), regenerate
+the embedded constant:
 
 ```bash
 dart run tool/embed_spec.dart
@@ -317,10 +355,13 @@ dart run tool/embed_spec.dart
 
 ## Roadmap
 
-### v0.3.0
-- Widget alias inheritance — alias a widget once and have child widgets inherit its traits.
-- Cross-method/cross-file resolution so a `Semantics` wrapper in a parent widget is connected to a custom button in a child.
-- More built-in detectors: text scaling, alternative text on images, animation preferences.
+### v0.4.0
+- Widget alias inheritance — alias a widget once and child widgets inherit its
+  traits automatically.
+- Cross-method/cross-file resolution so a `Semantics` wrapper in a parent widget
+  connects to a custom button in a child.
+- More built-in detectors: text scaling, alternative text on images, animation
+  preferences.
 - Configurable rule subset — run only the rules you care about.
 
 ---

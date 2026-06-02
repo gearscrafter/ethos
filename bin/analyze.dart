@@ -13,9 +13,7 @@ import 'package:ethos/ethos.dart';
 void main(List<String> arguments) async {
   final parser = ArgParser()
     ..addOption('project-path',
-        abbr: 'p',
-        help: 'Path to Flutter project to analyze',
-        mandatory: true)
+        abbr: 'p', help: 'Path to Flutter project to analyze', mandatory: true)
     ..addOption('config',
         abbr: 'c',
         help:
@@ -26,8 +24,7 @@ void main(List<String> arguments) async {
         defaultsTo: 'human',
         allowed: ['json', 'human', 'markdown', 'coverage'])
     ..addOption('output',
-        abbr: 'o',
-        help: 'Output file path (optional, defaults to stdout)')
+        abbr: 'o', help: 'Output file path (optional, defaults to stdout)')
     ..addFlag('verbose',
         abbr: 'v', help: 'Print detailed information', defaultsTo: false)
     ..addFlag('help', abbr: 'h', help: 'Show help message', negatable: false);
@@ -72,8 +69,7 @@ void main(List<String> arguments) async {
     }
 
     if (verbose) {
-      stderr.writeln(
-          '✅ Spec loaded: v${analyzer.spec.version} '
+      stderr.writeln('✅ Spec loaded: v${analyzer.spec.version} '
           '(${analyzer.spec.rules.length} rules, '
           '${analyzer.spec.widgetAliases.length} aliases)');
       stderr.writeln(

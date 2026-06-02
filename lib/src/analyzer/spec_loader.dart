@@ -148,8 +148,8 @@ class SpecLoader {
           formula: rule.coverageMetric.formula,
           unit: rule.coverageMetric.unit,
           target: override.target ?? rule.coverageMetric.target,
-          criticalThreshold:
-              override.criticalThreshold ?? rule.coverageMetric.criticalThreshold,
+          criticalThreshold: override.criticalThreshold ??
+              rule.coverageMetric.criticalThreshold,
         ),
         testCases: rule.testCases,
         howToFix: rule.howToFix,

@@ -130,9 +130,8 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     final name = node.methodName.name;
-    final isConstructorLike = node.realTarget == null &&
-        name.isNotEmpty &&
-        _startsUppercase(name);
+    final isConstructorLike =
+        node.realTarget == null && name.isNotEmpty && _startsUppercase(name);
 
     if (isConstructorLike) {
       _record(

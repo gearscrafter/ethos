@@ -14,7 +14,6 @@ class SettingsScreen extends StatelessWidget {
             child: const Text('Toggle dark mode'),
           ),
         ),
-
         Semantics(
           label: 'Sign out of your account',
           child: InkResponse(
@@ -22,7 +21,6 @@ class SettingsScreen extends StatelessWidget {
             child: const Text('Sign out'),
           ),
         ),
-
         IconButton(
           onPressed: () {},
           icon: const Icon(Icons.help),

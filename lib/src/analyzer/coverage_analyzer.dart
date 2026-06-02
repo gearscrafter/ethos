@@ -74,6 +74,7 @@ class CoverageAnalyzer {
       registry: registry,
     );
   }
+
   Future<CoverageReport> analyze() async {
     final report = CoverageReport(
       specVersion: spec.version,

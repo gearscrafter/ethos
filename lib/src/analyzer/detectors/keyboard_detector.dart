@@ -65,7 +65,7 @@ class KeyboardDetector implements RuleDetector {
     'FocusableActionDetector',
     'KeyboardListener',
     'RawKeyboardListener',
-    'FullscreenKeyboardListener', 
+    'FullscreenKeyboardListener',
   };
 
   @override
@@ -99,8 +99,7 @@ class KeyboardDetector implements RuleDetector {
               line: widget.line,
               column: widget.column,
               widgetType: 'GestureDetector',
-              message:
-                  'Tap gesture has no keyboard alternative (no Focus, '
+              message: 'Tap gesture has no keyboard alternative (no Focus, '
                   'Shortcuts, or keyboard listener ancestor). Keyboard users '
                   'cannot activate it (WCAG 2.1.1).',
             ));

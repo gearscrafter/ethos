@@ -58,8 +58,7 @@ class SemanticLabelsDetector implements RuleDetector {
                 line: widget.line,
                 column: widget.column,
                 widgetType: widget.type,
-                message:
-                    '${widget.type} has no non-empty "${alias.labelArg}" '
+                message: '${widget.type} has no non-empty "${alias.labelArg}" '
                     '(declared as a button in ethos.yaml widget_aliases).',
               ));
           }
@@ -68,8 +67,10 @@ class SemanticLabelsDetector implements RuleDetector {
 
         if (!_customInteractive.contains(widget.type)) continue;
         if (_hasExcludeFromSemantics(widget)) continue;
-        if (widget.type == 'GestureDetector' && !_hasTapGesture(widget)) continue;
-        if (widget.type == 'GestureDetector' && _isNonInteractiveTap(widget)) continue;
+        if (widget.type == 'GestureDetector' && !_hasTapGesture(widget))
+          continue;
+        if (widget.type == 'GestureDetector' && _isNonInteractiveTap(widget))
+          continue;
 
         total++;
 
@@ -85,8 +86,7 @@ class SemanticLabelsDetector implements RuleDetector {
               line: widget.line,
               column: widget.column,
               widgetType: widget.type,
-              message:
-                  'Wrapped in Semantics, but label is not a literal '
+              message: 'Wrapped in Semantics, but label is not a literal '
                   '(resolved at runtime). Cannot verify it is non-empty.',
               severity: FindingSeverity.indeterminate,
             ));
@@ -96,8 +96,7 @@ class SemanticLabelsDetector implements RuleDetector {
               line: widget.line,
               column: widget.column,
               widgetType: widget.type,
-              message:
-                  '${widget.type} has no Semantics(label: ...) ancestor — '
+              message: '${widget.type} has no Semantics(label: ...) ancestor — '
                   'screen readers will not announce it.',
             ));
           case _LabelState.empty:
@@ -120,15 +119,18 @@ class SemanticLabelsDetector implements RuleDetector {
     );
   }
 
-
   bool _hasExcludeFromSemantics(WidgetUsage widget) {
     final arg = widget.arg('excludeFromSemantics');
     return arg is BooleanLiteral && arg.value == true;
   }
 
   static const _tapGestures = {
-    'onTap', 'onTapDown', 'onTapUp',
-    'onDoubleTap', 'onLongPress', 'onSecondaryTap',
+    'onTap',
+    'onTapDown',
+    'onTapUp',
+    'onDoubleTap',
+    'onLongPress',
+    'onSecondaryTap',
   };
 
   bool _hasTapGesture(WidgetUsage widget) {
@@ -143,8 +145,10 @@ class SemanticLabelsDetector implements RuleDetector {
     if (onTap == null) return false;
     if (onTap is FunctionExpression) {
       final body = onTap.body;
-      if (body is BlockFunctionBody && body.block.statements.isEmpty) return true;
-      if (body is ExpressionFunctionBody && _mentionsUnfocus(body.expression)) return true;
+      if (body is BlockFunctionBody && body.block.statements.isEmpty)
+        return true;
+      if (body is ExpressionFunctionBody && _mentionsUnfocus(body.expression))
+        return true;
     }
     if (_mentionsUnfocus(onTap)) return true;
     return false;
@@ -175,7 +179,9 @@ class SemanticLabelsDetector implements RuleDetector {
     if (expr is StringLiteral) {
       final value = expr.stringValue;
       if (value == null) return _LabelState.indeterminate;
-      return value.trim().isEmpty ? _LabelState.empty : _LabelState.literalNonEmpty;
+      return value.trim().isEmpty
+          ? _LabelState.empty
+          : _LabelState.literalNonEmpty;
     }
     return _LabelState.indeterminate;
   }
@@ -200,8 +206,10 @@ class SemanticLabelsDetector implements RuleDetector {
   }
 
   String? _constructorNameOf(AstNode node) {
-    if (node is InstanceCreationExpression) return node.constructorName.type.name2.lexeme;
-    if (node is MethodInvocation && node.realTarget == null) return node.methodName.name;
+    if (node is InstanceCreationExpression)
+      return node.constructorName.type.name2.lexeme;
+    if (node is MethodInvocation && node.realTarget == null)
+      return node.methodName.name;
     return null;
   }
 
@@ -209,7 +217,8 @@ class SemanticLabelsDetector implements RuleDetector {
     final args = _argumentsOf(node);
     if (args == null) return null;
     for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == name) return arg.expression;
+      if (arg is NamedExpression && arg.name.label.name == name)
+        return arg.expression;
     }
     return null;
   }
@@ -238,7 +247,10 @@ class _DescendantSemanticsFinder extends RecursiveAstVisitor<void> {
   void _check(AstNode node, void Function() descend) {
     if (found != null) return;
     final name = nameOf(node);
-    if (name == 'Semantics') { found = node; return; }
+    if (name == 'Semantics') {
+      found = node;
+      return;
+    }
     if (node != rootNode && name != null && stopTypes.contains(name)) return;
     descend();
   }

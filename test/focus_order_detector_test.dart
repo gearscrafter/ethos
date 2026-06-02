@@ -67,7 +67,8 @@ void main() {
     });
 
     test('no inputs → not counted', () {
-      const code = "Widget build() => Column(children: [Text('a'), Text('b')]);";
+      const code =
+          "Widget build() => Column(children: [Text('a'), Text('b')]);";
       final result = _run(detector, rule, code);
       expect(result.total, 0);
     });

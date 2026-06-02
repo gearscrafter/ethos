@@ -37,7 +37,8 @@ void main() async {
     print('   Detectors registered: '
         '${analyzer.registry.registeredRuleIds.length}');
     if (analyzer.spec.widgetAliases.isNotEmpty) {
-      print('   Widget aliases: ${analyzer.spec.widgetAliases.keys.join(', ')}');
+      print(
+          '   Widget aliases: ${analyzer.spec.widgetAliases.keys.join(', ')}');
     }
     print('');
 
@@ -56,9 +57,8 @@ void main() async {
     print('📋 Coverage by Rule');
     print('─' * 50);
     for (final coverage in report.coverage.values) {
-      final icon = coverage.isCritical
-          ? '⚠️ '
-          : (coverage.total == 0 ? 'ℹ️ ' : '✅');
+      final icon =
+          coverage.isCritical ? '⚠️ ' : (coverage.total == 0 ? 'ℹ️ ' : '✅');
       final status = coverage.isCritical
           ? '[CRITICAL]'
           : (coverage.total == 0 ? '[NO DATA]' : '[OK]');

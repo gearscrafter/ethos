@@ -29,10 +29,8 @@ void main() {
 
     test('All rules have required fields', () {
       for (final rule in analyzer.spec.rules.values) {
-        expect(rule.ruleId, isNotEmpty,
-            reason: 'Rule ID cannot be empty');
-        expect(rule.title, isNotEmpty,
-            reason: 'Rule title cannot be empty');
+        expect(rule.ruleId, isNotEmpty, reason: 'Rule ID cannot be empty');
+        expect(rule.title, isNotEmpty, reason: 'Rule title cannot be empty');
         expect(rule.wcagCriterion, isNotEmpty,
             reason: 'WCAG criterion cannot be empty');
         expect(rule.coverageMetric, isNotNull,
@@ -88,15 +86,14 @@ void main() {
         expect(
           rule.coverageMetric.criticalThreshold,
           lessThanOrEqualTo(rule.coverageMetric.target),
-          reason:
-              'Rule ${rule.ruleId}: critical threshold must be <= target',
+          reason: 'Rule ${rule.ruleId}: critical threshold must be <= target',
         );
       }
     });
 
     test('Semantic labels rule is defined', () {
-      expect(analyzer.spec.rules.containsKey('wcag_1_3_1_semantics_label'),
-          true);
+      expect(
+          analyzer.spec.rules.containsKey('wcag_1_3_1_semantics_label'), true);
     });
 
     test('Contrast rule is defined', () {
@@ -105,9 +102,7 @@ void main() {
     });
 
     test('Touch target rule is defined', () {
-      expect(
-          analyzer.spec.rules
-              .containsKey('wcag_2_5_5_target_size_enhanced'),
+      expect(analyzer.spec.rules.containsKey('wcag_2_5_5_target_size_enhanced'),
           true);
     });
 
@@ -128,8 +123,7 @@ void main() {
     test('Each compliance level has required rules', () {
       for (final level in analyzer.spec.complianceLevels.values) {
         expect(level.requiredRules, isNotEmpty,
-            reason:
-                'Compliance level ${level.name} must have required rules');
+            reason: 'Compliance level ${level.name} must have required rules');
       }
     });
 
@@ -154,8 +148,8 @@ void main() {
     test('Analyzer initializes without errors', () {
       expect(analyzer, isNotNull);
       expect(analyzer.spec, isNotNull);
-      expect(analyzer.registry.registeredRuleIds.length,
-          greaterThanOrEqualTo(5));
+      expect(
+          analyzer.registry.registeredRuleIds.length, greaterThanOrEqualTo(5));
     });
 
     test('Report has correct structure', () {
@@ -178,8 +172,7 @@ void main() {
     });
 
     test('Compliance level is a valid value', () {
-      expect(['A', 'AA', 'AAA', 'NONE'].contains(report.complianceLevel),
-          true,
+      expect(['A', 'AA', 'AAA', 'NONE'].contains(report.complianceLevel), true,
           reason: 'Compliance level must be A, AA, AAA, or NONE');
     });
 
@@ -260,8 +253,7 @@ void main() {
           },
         },
       });
-      final override =
-          config.ruleOverrides['wcag_1_4_3_contrast_minimum'];
+      final override = config.ruleOverrides['wcag_1_4_3_contrast_minimum'];
       expect(override, isNotNull);
       expect(override!.criticalThreshold, 95.0);
     });
@@ -272,10 +264,9 @@ void main() {
     });
 
     test('WidgetAlias parses all roles', () {
-      expect(
-          WidgetAlias.fromYaml('A', {'role': 'button'}).role, WidgetRole.button);
-      expect(
-          WidgetAlias.fromYaml('B', {'role': 'text'}).role, WidgetRole.text);
+      expect(WidgetAlias.fromYaml('A', {'role': 'button'}).role,
+          WidgetRole.button);
+      expect(WidgetAlias.fromYaml('B', {'role': 'text'}).role, WidgetRole.text);
       expect(
           WidgetAlias.fromYaml('C', {'role': 'input'}).role, WidgetRole.input);
     });

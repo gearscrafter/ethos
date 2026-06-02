@@ -81,8 +81,7 @@ class FocusOrderDetector implements RuleDetector {
               line: form.line,
               column: form.column,
               widgetType: 'Form',
-              message:
-                  'Form has no explicit focus management (FocusNode, '
+              message: 'Form has no explicit focus management (FocusNode, '
                   'FocusScope, autofocus, or FocusTraversalGroup). Focus '
                   'order relies on implicit traversal (WCAG 2.4.3).',
             ));
