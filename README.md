@@ -33,7 +33,10 @@ Unlike tools that detect individual issues, Ethos calculates **coverage metrics*
 - ✅ **Built-in spec, zero setup** — the WCAG 2.2 rules ship inside the package.
   You don't copy any YAML file.
 - ✅ **Optional `ethos.yaml`** — teach Ethos about your own design-system
-  widgets in five minutes.
+  widgets and colors in five minutes.
+- ✅ **Theme-aware contrast** — resolves `theme.textTheme.X` automatically from
+  your `ThemeData`, and accepts explicit `color_aliases` for custom style
+  variables.
 - ✅ **Pluggable detector registry** — add or replace rules without touching the
   core engine.
 - ✅ **CI/CD ready** — JSON, Markdown, and human-readable outputs; exits with
@@ -54,7 +57,7 @@ ethos -p ./my_flutter_app
 
 ```yaml
 dependencies:
-  ethos: ^0.2.0
+  ethos: ^0.3.1
 ```
 
 ```dart
@@ -99,10 +102,9 @@ Ethos works out of the box — the built-in spec already covers Flutter's
 standard widgets (`GestureDetector`, `InkWell`, `IconButton`, `TextField`,
 etc.).
 
-Most real apps wrap controls in their own design-system components
-(`CircleIconBtn`, `AppButton`, whatever your team calls them). Ethos can't
-guess those names, so without config they appear as **indeterminate**. To fix
-that, drop an `ethos.yaml` next to your `pubspec.yaml`:
+Most real apps wrap controls in their own design-system components and define
+colors in a custom style object. Drop an `ethos.yaml` next to your
+`pubspec.yaml` to teach Ethos about them:
 
 ```yaml
 # ethos.yaml — OPTIONAL. Ethos auto-detects it; no flag needed.
@@ -117,7 +119,18 @@ widget_aliases:
 
   AppButton:
     role: button
-    label_arg: a11yLabel     # use whatever your team calls it
+    label_arg: a11yLabel
+
+color_aliases:
+  # Teach Ethos about your design-system color expressions so the contrast
+  # rule can compute real WCAG ratios instead of reporting "indeterminate".
+  # Key = exact source expression as written in code.
+  "$styles.text.body":
+    foreground: "#212121"   # required — the text color
+    background: "#FFFFFF"   # optional — the default background color
+
+  "$styles.colors.primary":
+    foreground: "#1565C0"
 
 # Optional: tighten a threshold without rewriting the spec.
 # rule_overrides:
@@ -125,7 +138,9 @@ widget_aliases:
 #     critical_threshold: 95
 ```
 
-What each field teaches:
+What each section teaches:
+
+**`widget_aliases`**
 
 | Field             | Detector                                | Effect                                        |
 |-------------------|-----------------------------------------|-----------------------------------------------|
@@ -134,9 +149,15 @@ What each field teaches:
 | `size_guaranteed` | Touch Target Size                       | Auto-PASS — already ≥ 48×48 internally.       |
 | `keyboard_ready`  | Keyboard Accessibility                  | Auto-PASS — keyboard-operable out of the box. |
 
-No `ethos.yaml`? Ethos still runs on the built-in spec. Custom widgets are
-simply ignored (shown as indeterminate). For a vanilla Flutter project that's
-already useful; for a project with a design system, the aliases make all the
+**`color_aliases`**
+
+Maps a design-system style expression to concrete hex colors. Both
+`#RRGGBB` and `#AARRGGBB` formats are accepted. When `background` is
+omitted, Ethos cannot compute a ratio and the element remains indeterminate.
+
+No `ethos.yaml`? Ethos still runs on the built-in spec. Custom widgets and
+colors appear as indeterminate. For a vanilla Flutter project that's already
+useful; for a project with a design system, the aliases make all the
 difference.
 
 ---
@@ -177,12 +198,13 @@ GestureDetector(onTap: () => navigate(), child: Icon(Icons.settings))
 ### 2. Minimum Color Contrast — `wcag_1_4_3_contrast_minimum` (WCAG 1.4.3 · Level AA)
 
 Text must have at least 4.5:1 contrast (3:1 for large text ≥ 18 pt) using the
-real WCAG luminance formula.
+real WCAG luminance formula. Resolution is attempted in three layers:
 
-- **In scope:** `Text` with inline `TextStyle(color:, backgroundColor:)` where
-  both are literal (`Color(0x...)` or `Colors.*`).
-- **Indeterminate:** colors from `Theme.of(context)`, custom style variables, or
-  a missing inline background — the common case in well-structured Flutter code.
+1. **Inline literals** — `TextStyle(color: Color(0xFF...), backgroundColor: ...)`.
+2. **ThemeData extraction** — resolves `theme.textTheme.bodyLarge` etc.
+   automatically from your `MaterialApp(theme: ThemeData(...))`.
+3. **`color_aliases`** — resolves design-system expressions like
+   `$styles.text.body` from your `ethos.yaml`.
 
 ```dart
 // ✅ PASS — ratio 21:1
@@ -197,8 +219,10 @@ Text('Hello', style: TextStyle(
   backgroundColor: Colors.white,
 ))
 
-// ⓘ INDETERMINATE — color from theme, cannot verify statically
 Text('Hello', style: theme.textTheme.bodyLarge)
+
+// ✅ PASS via color_aliases (if declared in ethos.yaml)
+// Text('Hello', style: $styles.text.body)
 ```
 
 ### 3. Touch Target Size — `wcag_2_5_5_target_size_enhanced` (WCAG 2.5.5 · Level AAA)
@@ -310,7 +334,7 @@ ethos/
 │   └── src/
 │       ├── models/
 │       │   ├── spec.dart          # Spec, Rule, WidgetAlias, WidgetRole
-│       │   ├── ethos_config.dart  # User ethos.yaml model + RuleOverride
+│       │   ├── ethos_config.dart  # EthosConfig, ColorAlias, RuleOverride
 │       │   └── coverage_report.dart  # CoverageReport, RuleCoverage, Finding
 │       ├── specs/v1/
 │       │   ├── wcag_2_2.yaml          # Source spec — edit this
@@ -321,7 +345,9 @@ ethos/
 │           ├── detector_registry.dart
 │           ├── rule_detector.dart      # RuleDetector interface
 │           ├── ast/widget_visitor.dart
-│           ├── utils/color_resolver.dart
+│           ├── utils/
+│           │   ├── color_resolver.dart  # WCAG luminance + Colors.* map
+│           │   └── theme_extractor.dart # ThemeData color extraction
 │           └── detectors/
 │               ├── semantic_labels_detector.dart
 │               ├── contrast_detector.dart
@@ -331,15 +357,9 @@ ethos/
 ├── example/
 │   ├── main.dart
 │   └── fixtures/
-│       ├── ethos.yaml             # Sample widget aliases
+│       ├── ethos.yaml             # Sample widget + color aliases
 │       └── lib/                   # Sample Dart files (analysis input only)
 ├── test/
-│   ├── spec_compliance_test.dart
-│   ├── semantic_labels_detector_test.dart
-│   ├── contrast_detector_test.dart
-│   ├── touch_target_detector_test.dart
-│   ├── keyboard_detector_test.dart
-│   └── focus_order_detector_test.dart
 └── tool/
     └── embed_spec.dart            # Regenerates wcag_2_2_embedded.dart
 ```
@@ -355,7 +375,7 @@ dart run tool/embed_spec.dart
 
 ## Roadmap
 
-### v0.4.0
+### v1.0.0
 - Widget alias inheritance — alias a widget once and child widgets inherit its
   traits automatically.
 - Cross-method/cross-file resolution so a `Semantics` wrapper in a parent widget

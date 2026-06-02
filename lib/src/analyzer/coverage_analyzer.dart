@@ -123,6 +123,7 @@ class CoverageAnalyzer {
           rule: rule,
           files: parsedFiles,
           aliases: spec.widgetAliases,
+          colorAliases: spec.colorAliases,
         );
         report.coverage[rule.ruleId] = RuleCoverage.calculate(
           ruleId: rule.ruleId,

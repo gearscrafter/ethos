@@ -1,4 +1,5 @@
-/// Represents a complete WCAG specification (loaded from YAML)
+import 'ethos_config.dart';
+
 class Spec {
   final String version;
   final String wcagVersion;
@@ -7,7 +8,13 @@ class Spec {
   final Map<String, Category> categories;
   final Map<String, Rule> rules;
   final Map<String, ComplianceLevel> complianceLevels;
+
+  /// User-declared design-system widgets, keyed by widget name.
   final Map<String, WidgetAlias> widgetAliases;
+
+  /// User-declared color mappings for design-system style expressions.
+  /// Empty by default; populated from `ethos.yaml` `color_aliases`.
+  final Map<String, ColorAlias> colorAliases;
 
   Spec({
     required this.version,
@@ -18,6 +25,7 @@ class Spec {
     required this.rules,
     required this.complianceLevels,
     this.widgetAliases = const {},
+    this.colorAliases = const {},
   });
 
   /// Loads the spec from a YAML map

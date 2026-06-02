@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 
 import '../../models/spec.dart';
+import '../../models/ethos_config.dart';
 import '../../models/coverage_report.dart';
 import '../ast/widget_visitor.dart';
 import '../rule_detector.dart';
@@ -28,6 +29,7 @@ class SemanticLabelsDetector implements RuleDetector {
     required Rule rule,
     required List<ParsedFile> files,
     Map<String, WidgetAlias> aliases = const {},
+    Map<String, ColorAlias> colorAliases = const {}, // ← added
   }) {
     int matched = 0;
     int total = 0;
@@ -65,12 +67,18 @@ class SemanticLabelsDetector implements RuleDetector {
           continue;
         }
 
-        if (!_customInteractive.contains(widget.type)) continue;
-        if (_hasExcludeFromSemantics(widget)) continue;
-        if (widget.type == 'GestureDetector' && !_hasTapGesture(widget))
+        if (!_customInteractive.contains(widget.type)) {
           continue;
-        if (widget.type == 'GestureDetector' && _isNonInteractiveTap(widget))
+        }
+        if (_hasExcludeFromSemantics(widget)) {
           continue;
+        }
+        if (widget.type == 'GestureDetector' && !_hasTapGesture(widget)) {
+          continue;
+        }
+        if (widget.type == 'GestureDetector' && _isNonInteractiveTap(widget)) {
+          continue;
+        }
 
         total++;
 
@@ -135,20 +143,26 @@ class SemanticLabelsDetector implements RuleDetector {
 
   bool _hasTapGesture(WidgetUsage widget) {
     for (final g in _tapGestures) {
-      if (widget.namedArgs.containsKey(g)) return true;
+      if (widget.namedArgs.containsKey(g)) {
+        return true;
+      }
     }
     return false;
   }
 
   bool _isNonInteractiveTap(WidgetUsage widget) {
     final onTap = widget.arg('onTap');
-    if (onTap == null) return false;
+    if (onTap == null) {
+      return false;
+    }
     if (onTap is FunctionExpression) {
       final body = onTap.body;
-      if (body is BlockFunctionBody && body.block.statements.isEmpty)
+      if (body is BlockFunctionBody && body.block.statements.isEmpty) {
         return true;
-      if (body is ExpressionFunctionBody && _mentionsUnfocus(body.expression))
+      }
+      if (body is ExpressionFunctionBody && _mentionsUnfocus(body.expression)) {
         return true;
+      }
     }
     if (_mentionsUnfocus(onTap)) return true;
     return false;
@@ -206,19 +220,33 @@ class SemanticLabelsDetector implements RuleDetector {
   }
 
   String? _constructorNameOf(AstNode node) {
-    if (node is InstanceCreationExpression)
-      return node.constructorName.type.name2.lexeme;
-    if (node is MethodInvocation && node.realTarget == null)
+    if (node is InstanceCreationExpression) {
+      var source = node.constructorName.type.toSource().trim();
+      final genericIdx = source.indexOf('<');
+      if (genericIdx != -1) {
+        source = source.substring(0, genericIdx);
+      }
+      final dotIdx = source.lastIndexOf('.');
+      if (dotIdx != -1) {
+        source = source.substring(dotIdx + 1);
+      }
+      return source.isEmpty ? null : source;
+    }
+    if (node is MethodInvocation && node.realTarget == null) {
       return node.methodName.name;
+    }
     return null;
   }
 
   Expression? _namedArg(AstNode node, String name) {
     final args = _argumentsOf(node);
-    if (args == null) return null;
+    if (args == null) {
+      return null;
+    }
     for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == name)
+      if (arg is NamedExpression && arg.name.label.name == name) {
         return arg.expression;
+      }
     }
     return null;
   }

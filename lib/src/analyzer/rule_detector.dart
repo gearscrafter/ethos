@@ -1,39 +1,30 @@
-import 'package:ethos/src/models/coverage_report.dart';
-import 'package:ethos/src/models/spec.dart';
-
+import '../models/coverage_report.dart';
+import '../models/ethos_config.dart';
+import '../models/spec.dart';
 import 'ast/widget_visitor.dart';
 
 /// Contract that every rule detector must implement.
-///
-/// A detector is responsible for ONE WCAG rule. It receives the parsed AST
-/// of every Dart file in a project and reports how many widgets comply,
-/// how many do not, and how many it could not evaluate.
-///
-/// Detectors are designed to be:
-/// - **Self-contained**: each lives in its own file.
-/// - **Self-registering**: see [DetectorRegistry] — adding a new detector
-///   requires zero changes to existing code.
-/// - **Honest**: when a detector cannot decide (e.g. a color resolved from
-///   a theme), it counts the element as indeterminate, not as pass/fail.
 abstract class RuleDetector {
-  /// The rule_id this detector implements. MUST match the rule_id in the
-  /// YAML spec; the registry uses this for the lookup.
+  /// The rule_id this detector implements.
   String get ruleId;
 
   /// Analyzes all parsed files for this rule and returns coverage.
   ///
-  /// [rule] is the spec metadata (title, critical threshold, etc).
-  /// [files] are all parsed Dart files in the project.
+  /// [rule]         — spec metadata (title, critical threshold, etc).
+  /// [files]        — all parsed Dart files in the project.
+  /// [aliases]      — user-declared widget aliases from `ethos.yaml`.
+  /// [colorAliases] — user-declared color mappings from `ethos.yaml`.
+  ///                  Only consumed by [ContrastDetector]; other detectors
+  ///                  can safely ignore it.
   DetectionResult analyze({
     required Rule rule,
     required List<ParsedFile> files,
     Map<String, WidgetAlias> aliases = const {},
+    Map<String, ColorAlias> colorAliases = const {},
   });
 }
 
-/// Raw counts produced by a [RuleDetector], before they are turned into a
-/// [RuleCoverage]. Kept as a plain data class so detectors don't have to
-/// know about thresholds or critical-status calculation.
+/// Raw counts produced by a [RuleDetector].
 class DetectionResult {
   final int matched;
   final int total;
@@ -47,7 +38,6 @@ class DetectionResult {
     this.findings = const [],
   });
 
-  /// Convenience for detectors that found nothing applicable.
   const DetectionResult.empty()
       : matched = 0,
         total = 0,

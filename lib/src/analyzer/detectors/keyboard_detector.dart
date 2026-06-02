@@ -1,30 +1,11 @@
+import 'package:analyzer/dart/ast/ast.dart';
+
 import '../../models/spec.dart';
+import '../../models/ethos_config.dart';
 import '../../models/coverage_report.dart';
 import '../ast/widget_visitor.dart';
 import '../rule_detector.dart';
 
-/// Detects WCAG 2.1.1 — Keyboard Accessibility.
-///
-/// ## Honest scope
-///
-/// "Is all functionality operable by keyboard?" is not a question static
-/// analysis can fully answer — it depends on runtime flow. This detector
-/// measures two verifiable signals and combines them:
-///
-/// **Numerator (matched):** interactive widgets that ARE keyboard-operable
-/// out of the box — Material controls (`ElevatedButton`, `TextButton`,
-/// `IconButton`, `OutlinedButton`, `FilledButton`, `FloatingActionButton`,
-/// `TextField`, `Switch`, `Checkbox`, `Radio`, `Slider`, etc.), plus custom
-/// gesture widgets that the developer explicitly made focusable (wrapped in
-/// `Focus`/`InkWell` or paired with a keyboard listener).
-///
-/// **Denominator (total):** the above PLUS custom gesture widgets
-/// (`GestureDetector`) with a tap-like action. A `GestureDetector` with
-/// `onTap` but no keyboard path is the classic 2.1.1 violation and is
-/// flagged.
-///
-/// Drag/pan-only gesture widgets are skipped here (their keyboard story is
-/// different and out of this rule's reliable reach).
 class KeyboardDetector implements RuleDetector {
   static const _keyboardReady = {
     'ElevatedButton',
@@ -76,6 +57,7 @@ class KeyboardDetector implements RuleDetector {
     required Rule rule,
     required List<ParsedFile> files,
     Map<String, WidgetAlias> aliases = const {},
+    Map<String, ColorAlias> colorAliases = const {},
   }) {
     int matched = 0;
     int total = 0;
@@ -83,6 +65,15 @@ class KeyboardDetector implements RuleDetector {
 
     for (final file in files) {
       for (final widget in file.widgets) {
+        final alias = aliases[widget.type];
+        if (alias != null &&
+            alias.role == WidgetRole.button &&
+            alias.keyboardReady) {
+          total++;
+          matched++;
+          continue;
+        }
+
         if (_keyboardReady.contains(widget.type)) {
           total++;
           matched++;
@@ -90,6 +81,8 @@ class KeyboardDetector implements RuleDetector {
         }
 
         if (widget.type == 'GestureDetector' && _hasTapGesture(widget)) {
+          if (_hasExcludeFromSemantics(widget)) continue;
+
           total++;
           if (_hasKeyboardProvider(widget)) {
             matched++;
@@ -108,11 +101,12 @@ class KeyboardDetector implements RuleDetector {
       }
     }
 
-    return DetectionResult(
-      matched: matched,
-      total: total,
-      findings: findings,
-    );
+    return DetectionResult(matched: matched, total: total, findings: findings);
+  }
+
+  bool _hasExcludeFromSemantics(WidgetUsage widget) {
+    final arg = widget.arg('excludeFromSemantics');
+    return arg is BooleanLiteral && arg.value == true;
   }
 
   bool _hasTapGesture(WidgetUsage widget) {

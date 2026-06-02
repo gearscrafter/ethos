@@ -126,6 +126,10 @@ class SpecLoader {
       ...base.widgetAliases,
       ...config.widgetAliases,
     };
+    final mergedColorAliases = <String, ColorAlias>{
+      ...base.colorAliases,
+      ...config.colorAliases,
+    };
     final mergedRules = <String, Rule>{};
     base.rules.forEach((id, rule) {
       final override = config.ruleOverrides[id];
@@ -165,6 +169,7 @@ class SpecLoader {
       rules: mergedRules,
       complianceLevels: base.complianceLevels,
       widgetAliases: mergedAliases,
+      colorAliases: mergedColorAliases,
     );
   }
 

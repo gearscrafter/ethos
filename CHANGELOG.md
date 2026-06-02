@@ -1,3 +1,14 @@
+## 0.4.0
+ 
+* Improved compatibility with newer `analyzer` versions (up to 13.x), ensuring Ethos works reliably across supported releases.
+
+* Added official desktop platform support (`Windows`, `macOS`, and `Linux`) and resolved analyzer/lint-related issues.
+
+* Significantly enhanced color contrast detection by automatically extracting colors from `ThemeData` and supporting custom `color_aliases` in `ethos.yaml`, reducing indeterminate results in real-world applications.
+
+* Introduced `ColorAlias` and `ThemeExtractor` to resolve design-system and theme-based colors into actual WCAG contrast calculations.
+
+
 # 0.3.0
 
 - CLI command renamed from `accessibility-coverage` to `ethos`.

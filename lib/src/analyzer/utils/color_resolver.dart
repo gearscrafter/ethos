@@ -83,7 +83,16 @@ class ColorResolver {
 
   static String? _ctorName(Expression expr) {
     if (expr is InstanceCreationExpression) {
-      return expr.constructorName.type.name2.lexeme;
+      var source = expr.constructorName.type.toSource().trim();
+      final genericIdx = source.indexOf('<');
+      if (genericIdx != -1) {
+        source = source.substring(0, genericIdx);
+      }
+      final dotIdx = source.lastIndexOf('.');
+      if (dotIdx != -1) {
+        source = source.substring(dotIdx + 1);
+      }
+      return source.isEmpty ? null : source;
     }
     if (expr is MethodInvocation && expr.realTarget == null) {
       return expr.methodName.name;

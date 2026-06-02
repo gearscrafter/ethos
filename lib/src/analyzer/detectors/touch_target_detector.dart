@@ -1,11 +1,12 @@
 import 'package:analyzer/dart/ast/ast.dart';
 
 import '../../models/spec.dart';
+import '../../models/ethos_config.dart';
 import '../../models/coverage_report.dart';
 import '../ast/widget_visitor.dart';
 import '../rule_detector.dart';
 
-/// Detects WCAG 2.5.5 — Touch Target Size.
+/// Detects WCAG 2.5.5 — Touch Target Size (Enhanced).
 ///
 class TouchTargetDetector implements RuleDetector {
   static const double _minSize = 48.0;
@@ -28,7 +29,8 @@ class TouchTargetDetector implements RuleDetector {
   DetectionResult analyze({
     required Rule rule,
     required List<ParsedFile> files,
-    Map<String, WidgetAlias> aliases = const {}, // ← added
+    Map<String, WidgetAlias> aliases = const {},
+    Map<String, ColorAlias> colorAliases = const {},
   }) {
     int matched = 0;
     int total = 0;
@@ -136,19 +138,33 @@ class TouchTargetDetector implements RuleDetector {
   }
 
   String? _ctorName(AstNode node) {
-    if (node is InstanceCreationExpression)
-      return node.constructorName.type.name2.lexeme;
-    if (node is MethodInvocation && node.realTarget == null)
+    if (node is InstanceCreationExpression) {
+      var source = node.constructorName.type.toSource().trim();
+      final genericIdx = source.indexOf('<');
+      if (genericIdx != -1) {
+        source = source.substring(0, genericIdx);
+      }
+      final dotIdx = source.lastIndexOf('.');
+      if (dotIdx != -1) {
+        source = source.substring(dotIdx + 1);
+      }
+      return source.isEmpty ? null : source;
+    }
+    if (node is MethodInvocation && node.realTarget == null) {
       return node.methodName.name;
+    }
     return null;
   }
 
   Expression? _namedArg(AstNode node, String name) {
     final args = _argsOf(node);
-    if (args == null) return null;
+    if (args == null) {
+      return null;
+    }
     for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == name)
+      if (arg is NamedExpression && arg.name.label.name == name) {
         return arg.expression;
+      }
     }
     return null;
   }

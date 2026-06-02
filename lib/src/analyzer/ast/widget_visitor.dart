@@ -2,29 +2,19 @@ import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
-import 'package:analyzer/source/line_info.dart';
 
 /// A single widget construction extracted from the AST.
-///
-/// Carries enough context for any [RuleDetector] to make a confident
-/// judgement: the widget type, its named arguments, source location, and
-/// the chain of ancestor widget types (outermost first) so a detector can
-/// ask "is this widget wrapped in `Semantics`?" without re-walking the tree.
 class WidgetUsage {
   /// Constructor name as written in source (e.g. `IconButton`, `Semantics`).
   final String type;
 
-  /// Named arguments passed to the constructor. The value is the raw AST
-  /// expression node so detectors can inspect literals, identifiers,
-  /// member access (`Colors.blue`), method calls, etc.
+  /// Named arguments passed to the constructor.
   final Map<String, Expression> namedArgs;
 
   /// Positional arguments in source order.
   final List<Expression> positionalArgs;
 
-  /// Ancestor widget types, outermost first. `ancestors.last` is the direct
-  /// parent widget construction (if any). Non-widget intermediate AST nodes
-  /// are skipped.
+  /// Ancestor widget types, outermost first.
   final List<String> ancestors;
 
   /// 1-based line number where the constructor starts.
@@ -36,9 +26,7 @@ class WidgetUsage {
   /// Character offset in the source file.
   final int offset;
 
-  /// Reference to the original AST node (either an
-  /// [InstanceCreationExpression] or a [MethodInvocation]), in case a
-  /// detector needs deeper inspection beyond what is pre-extracted.
+  /// Reference to the original AST node.
   final AstNode node;
 
   WidgetUsage({
@@ -72,8 +60,13 @@ class WidgetUsage {
 
 /// Result of parsing a single Dart file.
 class ParsedFile {
+  /// Absolute or relative path to the source file.
   final String path;
+
+  /// Every widget construction found in the file.
   final List<WidgetUsage> widgets;
+
+  /// True if the file had parse errors (widgets may still be partially found).
   final bool hasErrors;
 
   ParsedFile({
@@ -84,15 +77,6 @@ class ParsedFile {
 }
 
 /// Parses a Dart source file and returns every widget construction found.
-///
-/// Uses `package:analyzer`'s [parseString] (purely syntactic, no type
-/// resolution) which is fast and does not require a resolved package
-/// context. This is enough for the detectors we run: they classify by
-/// constructor name and inspect literal arguments.
-///
-/// Parse errors are swallowed (the file is still returned with whatever
-/// widgets parsed successfully) so a single malformed file does not halt
-/// a whole-project analysis.
 ParsedFile parseDartFile(String path, String source) {
   final result = parseString(
     content: source,
@@ -109,7 +93,7 @@ ParsedFile parseDartFile(String path, String source) {
 }
 
 class _WidgetVisitor extends RecursiveAstVisitor<void> {
-  final LineInfo _lineInfo;
+  final dynamic _lineInfo;
   final List<WidgetUsage> widgets = [];
   final List<String> _ancestorStack = [];
 
@@ -117,7 +101,11 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    final typeName = node.constructorName.type.name2.lexeme;
+    final typeName = _typeNameOf(node.constructorName);
+    if (typeName == null) {
+      super.visitInstanceCreationExpression(node);
+      return;
+    }
     _record(
       typeName: typeName,
       arguments: node.argumentList.arguments,
@@ -184,7 +172,24 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
     }
   }
 
+  static String? _typeNameOf(ConstructorName constructorName) {
+    var source = constructorName.type.toSource().trim();
+
+    final genericIdx = source.indexOf('<');
+    if (genericIdx != -1) {
+      source = source.substring(0, genericIdx);
+    }
+
+    final dotIdx = source.lastIndexOf('.');
+    if (dotIdx != -1) {
+      source = source.substring(dotIdx + 1);
+    }
+
+    return source.isEmpty ? null : source;
+  }
+
   static bool _startsUppercase(String s) {
+    if (s.isEmpty) return false;
     final c = s.codeUnitAt(0);
     return c >= 0x41 && c <= 0x5A; // 'A'..'Z'
   }

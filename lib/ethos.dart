@@ -7,10 +7,9 @@
 /// import 'package:ethos/ethos.dart';
 ///
 /// void main() async {
-///   final analyzer = await CoverageAnalyzer.loadFromFile(
-///     'specs/v1.0.0/wcag_2_2.yaml',
-///   );
-///   final report = await analyzer.analyze(projectPath: './my_flutter_app');
+///   // Built-in WCAG 2.2 spec + optional ethos.yaml auto-merge.
+///   final analyzer = await CoverageAnalyzer.forProject('./my_flutter_app');
+///   final report = await analyzer.analyze();
 ///   print('Overall coverage: ${report.overallCoverage}%');
 ///   print('Compliance level: ${report.complianceLevel}');
 /// }
@@ -36,3 +35,4 @@ export 'src/analyzer/detectors/touch_target_detector.dart';
 export 'src/analyzer/detectors/keyboard_detector.dart';
 export 'src/analyzer/detectors/focus_order_detector.dart';
 export 'src/analyzer/utils/color_resolver.dart';
+export 'src/analyzer/utils/theme_extractor.dart';

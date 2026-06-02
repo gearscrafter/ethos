@@ -1,33 +1,12 @@
 import 'package:analyzer/dart/ast/ast.dart';
 
 import '../../models/spec.dart';
+import '../../models/ethos_config.dart';
 import '../../models/coverage_report.dart';
 import '../ast/widget_visitor.dart';
 import '../rule_detector.dart';
 
-/// Detects WCAG 2.4.3 — Focus Order.
-///
-/// ## Honest scope
-///
-/// Whether focus order is *logical* cannot be judged statically — it's a
-/// semantic, visual property. What we CAN verify is whether a screen that
-/// needs focus management actually provides it.
-///
-/// We scope to the situation where focus order matters most: forms and
-/// multi-input layouts. For each "focus context" (a `Form`, or any layout
-/// containing 2+ focusable inputs), we check whether focus is explicitly
-/// managed via at least one of: `FocusNode`, `FocusScope`, `focusNode:`
-/// argument, `autofocus: true`, or `FocusTraversalGroup`.
-///
-/// - **matched:** a focus context that declares explicit focus management.
-/// - **fail:** a multi-input focus context with no focus management at all
-///   (relies entirely on implicit traversal — works often, but is the
-///   classic place focus order breaks).
-///
-/// Single-input or input-less layouts are not counted (focus order is
-/// trivial there).
 class FocusOrderDetector implements RuleDetector {
-  /// Widgets that take keyboard focus and participate in traversal.
   static const _focusableInputs = {
     'TextField',
     'TextFormField',
@@ -41,7 +20,6 @@ class FocusOrderDetector implements RuleDetector {
     'Slider',
   };
 
-  /// Signals that focus is being explicitly managed.
   static const _focusManagementWidgets = {
     'FocusScope',
     'FocusTraversalGroup',
@@ -49,10 +27,7 @@ class FocusOrderDetector implements RuleDetector {
     'FocusableActionDetector',
   };
 
-  static const _focusManagementArgs = {
-    'focusNode',
-    'autofocus',
-  };
+  static const _focusManagementArgs = {'focusNode', 'autofocus'};
 
   @override
   String get ruleId => 'wcag_2_4_3_focus_order';
@@ -62,6 +37,7 @@ class FocusOrderDetector implements RuleDetector {
     required Rule rule,
     required List<ParsedFile> files,
     Map<String, WidgetAlias> aliases = const {},
+    Map<String, ColorAlias> colorAliases = const {}, // ← added
   }) {
     int matched = 0;
     int total = 0;
@@ -73,7 +49,7 @@ class FocusOrderDetector implements RuleDetector {
       if (forms.isNotEmpty) {
         for (final form in forms) {
           total++;
-          if (_formHasFocusManagement(form, file)) {
+          if (_fileHasFocusManagement(file)) {
             matched++;
           } else {
             findings.add(Finding(
@@ -90,7 +66,6 @@ class FocusOrderDetector implements RuleDetector {
         continue;
       }
 
-      // No Form: count file as a context only if it has 2+ focusable inputs.
       final inputCount =
           file.widgets.where((w) => _focusableInputs.contains(w.type)).length;
       if (inputCount < 2) continue;
@@ -113,19 +88,7 @@ class FocusOrderDetector implements RuleDetector {
       }
     }
 
-    return DetectionResult(
-      matched: matched,
-      total: total,
-      findings: findings,
-    );
-  }
-
-  /// Checks whether a Form (or its subtree) declares focus management.
-  /// Approximation: any focus-management widget or arg anywhere in the file
-  /// counts, since pinpointing "inside this Form" requires subtree walking
-  /// that adds little precision in practice.
-  bool _formHasFocusManagement(WidgetUsage form, ParsedFile file) {
-    return _fileHasFocusManagement(file);
+    return DetectionResult(matched: matched, total: total, findings: findings);
   }
 
   bool _fileHasFocusManagement(ParsedFile file) {

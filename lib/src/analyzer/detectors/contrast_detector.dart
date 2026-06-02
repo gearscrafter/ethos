@@ -1,39 +1,18 @@
 import 'package:analyzer/dart/ast/ast.dart';
 
 import '../../models/spec.dart';
+import '../../models/ethos_config.dart';
 import '../../models/coverage_report.dart';
 import '../ast/widget_visitor.dart';
 import '../rule_detector.dart';
 import '../utils/color_resolver.dart';
+import '../utils/theme_extractor.dart';
 
 /// Detects WCAG 1.4.3 — Minimum Color Contrast.
 ///
-/// ## The honesty problem
-///
-/// True contrast checking needs BOTH the text color and the color it sits
-/// on. In real Flutter code these are almost never in the same node: the
-/// text color lives in `TextStyle(color:)` while the background comes from
-/// an ancestor `Container`, `Scaffold`, or the theme — often several levels
-/// away and frequently resolved at runtime. Reconstructing that with purely
-/// syntactic analysis is not reliably possible.
-///
-/// So this detector measures only the **verifiable** case: a `Text` whose
-/// `style` declares both `color` and `backgroundColor` as resolvable
-/// literals. There it computes the real WCAG ratio and judges PASS/FAIL.
-///
-/// Everything else is reported honestly:
-/// - A `Text` with a resolvable text color but no inline background →
-///   **indeterminate** (we can't see what it sits on).
-/// - Colors from theme / `$styles` / variables → **indeterminate**.
-///
-/// This keeps the percentage meaningful: it reflects text whose contrast we
-/// could actually verify, not a guess.
 ///
 /// ## Thresholds
 ///
-/// WCAG AA: 4.5:1 for normal text, 3:1 for large text (>=18pt, or >=14pt
-/// bold). Without resolved font metrics we apply the stricter 4.5:1 by
-/// default; a `fontSize` literal >= 18 relaxes to 3:1.
 class ContrastDetector implements RuleDetector {
   static const double _ratioNormal = 4.5;
   static const double _ratioLarge = 3.0;
@@ -47,7 +26,10 @@ class ContrastDetector implements RuleDetector {
     required Rule rule,
     required List<ParsedFile> files,
     Map<String, WidgetAlias> aliases = const {},
+    Map<String, ColorAlias> colorAliases = const {},
   }) {
+    final themeColors = ThemeExtractor.extractFromFiles(files);
+
     int matched = 0;
     int total = 0;
     int indeterminate = 0;
@@ -55,47 +37,73 @@ class ContrastDetector implements RuleDetector {
 
     for (final file in files) {
       for (final widget in file.widgets) {
-        if (widget.type != 'Text') continue;
+        if (widget.type != 'Text') {
+          continue;
+        }
 
         final styleArg = widget.arg('style');
-        if (styleArg == null) {
-          indeterminate++;
-          continue;
+
+        if (styleArg != null && _isTextStyle(styleArg)) {
+          final colors = _extractInlineColors(styleArg);
+          if (colors != null) {
+            final (fg, bg, fontSize) = colors;
+            if (fg != null && bg != null) {
+              total++;
+              _judge(
+                fg: fg,
+                bg: bg,
+                fontSize: fontSize,
+                widget: widget,
+                file: file,
+                matched: (v) => matched += v,
+                findings: findings,
+              );
+              continue;
+            }
+          }
         }
 
-        final colors = _extractColors(styleArg);
-        if (colors == null) {
-          indeterminate++;
-          continue;
+        if (styleArg != null) {
+          final themeResult = _resolveFromTheme(styleArg, themeColors);
+          if (themeResult != null) {
+            final (fg, bg, fontSize) = themeResult;
+            if (fg != null && bg != null) {
+              total++;
+              _judge(
+                fg: fg,
+                bg: bg,
+                fontSize: fontSize,
+                widget: widget,
+                file: file,
+                matched: (v) => matched += v,
+                findings: findings,
+              );
+              continue;
+            }
+          }
         }
 
-        final (fg, bg, fontSize) = colors;
-
-        if (fg == null || bg == null) {
-          indeterminate++;
-          continue;
+        if (styleArg != null && colorAliases.isNotEmpty) {
+          final aliasResult = _resolveFromAlias(styleArg, colorAliases);
+          if (aliasResult != null) {
+            final (fg, bg, fontSize) = aliasResult;
+            if (fg != null && bg != null) {
+              total++;
+              _judge(
+                fg: fg,
+                bg: bg,
+                fontSize: fontSize,
+                widget: widget,
+                file: file,
+                matched: (v) => matched += v,
+                findings: findings,
+              );
+              continue;
+            }
+          }
         }
 
-        total++;
-
-        final ratio = ColorResolver.contrastRatio(fg, bg);
-        final required = (fontSize != null && fontSize >= _largeFontPt)
-            ? _ratioLarge
-            : _ratioNormal;
-
-        if (ratio >= required) {
-          matched++;
-        } else {
-          findings.add(Finding(
-            filePath: file.path,
-            line: widget.line,
-            column: widget.column,
-            widgetType: 'Text',
-            message:
-                'Contrast ratio ${ratio.toStringAsFixed(2)}:1 is below the '
-                '${required.toStringAsFixed(1)}:1 minimum required by WCAG AA.',
-          ));
-        }
+        indeterminate++;
       }
     }
 
@@ -107,26 +115,27 @@ class ContrastDetector implements RuleDetector {
     );
   }
 
-  /// Extracts (foreground, background, fontSize) from a `style:` argument
-  /// if it is an inline `TextStyle(...)`. Each element may be null if that
-  /// piece isn't a resolvable literal. Returns null if `style` isn't an
-  /// inline TextStyle at all (e.g. `style: $styles.text.body`).
-  (int?, int?, double?)? _extractColors(Expression styleArg) {
-    final name = _ctorName(styleArg);
-    if (name != 'TextStyle') return null;
+  bool _isTextStyle(Expression expr) {
+    final name = _ctorName(expr);
+    return name == 'TextStyle';
+  }
 
+  (int?, int?, double?)? _extractInlineColors(Expression styleArg) {
     final args = _args(styleArg);
-    if (args == null) return null;
+    if (args == null) {
+      return null;
+    }
 
     int? fg;
     int? bg;
     double? fontSize;
 
     for (final arg in args) {
-      if (arg is! NamedExpression) continue;
+      if (arg is! NamedExpression) {
+        continue;
+      }
       final key = arg.name.label.name;
       final value = arg.expression;
-
       switch (key) {
         case 'color':
           fg = ColorResolver.resolve(value);
@@ -140,13 +149,104 @@ class ContrastDetector implements RuleDetector {
           }
       }
     }
-
     return (fg, bg, fontSize);
+  }
+
+  (int?, int?, double?)? _resolveFromTheme(
+    Expression styleArg,
+    Map<String, int> themeColors,
+  ) {
+    if (themeColors.isEmpty) {
+      return null;
+    }
+
+    final key = _themeKeyOf(styleArg);
+    if (key == null) {
+      return null;
+    }
+
+    final fg = themeColors[key];
+    if (fg == null) {
+      return null;
+    }
+
+    final bg = themeColors['scaffoldBackgroundColor'];
+
+    return (fg, bg, null);
+  }
+
+  String? _themeKeyOf(Expression expr) {
+    if (expr is! PropertyAccess) {
+      return null;
+    }
+
+    final slotName = expr.propertyName.name;
+    final mid = expr.target;
+
+    if (mid is! PropertyAccess) {
+      return null;
+    }
+    final section = mid.propertyName.name;
+
+    if (section != 'textTheme' && section != 'colorScheme') {
+      return null;
+    }
+
+    return '$section.$slotName';
+  }
+
+  (int?, int?, double?)? _resolveFromAlias(
+    Expression styleArg,
+    Map<String, ColorAlias> colorAliases,
+  ) {
+    final sourceText = styleArg.toSource().trim();
+    final alias = colorAliases[sourceText];
+    if (alias == null) {
+      return null;
+    }
+    return (alias.foreground, alias.background, null);
+  }
+
+  void _judge({
+    required int fg,
+    required int bg,
+    required double? fontSize,
+    required WidgetUsage widget,
+    required ParsedFile file,
+    required void Function(int) matched,
+    required List<Finding> findings,
+  }) {
+    final ratio = ColorResolver.contrastRatio(fg, bg);
+    final required = (fontSize != null && fontSize >= _largeFontPt)
+        ? _ratioLarge
+        : _ratioNormal;
+
+    if (ratio >= required) {
+      matched(1);
+    } else {
+      findings.add(Finding(
+        filePath: file.path,
+        line: widget.line,
+        column: widget.column,
+        widgetType: 'Text',
+        message: 'Contrast ratio ${ratio.toStringAsFixed(2)}:1 is below the '
+            '${required.toStringAsFixed(1)}:1 minimum required by WCAG AA.',
+      ));
+    }
   }
 
   String? _ctorName(Expression expr) {
     if (expr is InstanceCreationExpression) {
-      return expr.constructorName.type.name2.lexeme;
+      var source = expr.constructorName.type.toSource().trim();
+      final gi = source.indexOf('<');
+      if (gi != -1) {
+        source = source.substring(0, gi);
+      }
+      final di = source.lastIndexOf('.');
+      if (di != -1) {
+        source = source.substring(di + 1);
+      }
+      return source.isEmpty ? null : source;
     }
     if (expr is MethodInvocation && expr.realTarget == null) {
       return expr.methodName.name;
@@ -155,8 +255,12 @@ class ContrastDetector implements RuleDetector {
   }
 
   NodeList<Expression>? _args(Expression expr) {
-    if (expr is InstanceCreationExpression) return expr.argumentList.arguments;
-    if (expr is MethodInvocation) return expr.argumentList.arguments;
+    if (expr is InstanceCreationExpression) {
+      return expr.argumentList.arguments;
+    }
+    if (expr is MethodInvocation) {
+      return expr.argumentList.arguments;
+    }
     return null;
   }
 }
