@@ -1,12 +1,22 @@
+### 0.5.0
+
+- **Deep analysis mode:** a new CLI flag and `DeepAnalyzer`
+  API that uses `AnalysisContextCollection` to resolve the full project —
+  cross-file references, class hierarchies, and type information. Detects
+  widgets and accessibility issues that standard syntactic analysis misses
+  entirely. Falls back to standard mode automatically when the project is not
+  ready (no `flutter pub get` run).
+
 ## 0.4.0
  
-* Improved compatibility with newer `analyzer` versions (up to 13.x), ensuring Ethos works reliably across supported releases.
+- Improved compatibility with newer `analyzer` versions (up to 13.x), ensuring Ethos works reliably across supported releases.
 
-* Added official desktop platform support (`Windows`, `macOS`, and `Linux`) and resolved analyzer/lint-related issues.
+- Added official desktop platform support (`Windows`, `macOS`, and `Linux`) and resolved analyzer/lint-related issues.
 
-* Significantly enhanced color contrast detection by automatically extracting colors from `ThemeData` and supporting custom `color_aliases` in `ethos.yaml`, reducing indeterminate results in real-world applications.
+- Significantly enhanced color contrast detection by automatically extracting colors from `ThemeData` and supporting custom `color_aliases` in `ethos.yaml`, reducing indeterminate results in real-world applications.
 
-* Introduced `ColorAlias` and `ThemeExtractor` to resolve design-system and theme-based colors into actual WCAG contrast calculations.
+
+- Introduced `ColorAlias` and `ThemeExtractor` to resolve design-system and theme-based colors into actual WCAG contrast calculations.
 
 
 # 0.3.0

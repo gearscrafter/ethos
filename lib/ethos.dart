@@ -36,3 +36,11 @@ export 'src/analyzer/detectors/keyboard_detector.dart';
 export 'src/analyzer/detectors/focus_order_detector.dart';
 export 'src/analyzer/utils/color_resolver.dart';
 export 'src/analyzer/utils/theme_extractor.dart';
+
+// Deep analysis
+export 'src/analyzer/deep/deep_analyzer.dart';
+export 'src/analyzer/deep/deep_detector.dart';
+export 'src/analyzer/deep/analysis_progress.dart';
+export 'src/analyzer/deep/resolved_file.dart';
+export 'src/analyzer/deep/detectors/cross_file_semantic_labels_detector.dart';
+export 'src/analyzer/deep/detectors/resolved_contrast_detector.dart';

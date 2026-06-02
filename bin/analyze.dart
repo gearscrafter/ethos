@@ -3,30 +3,29 @@ import 'package:args/args.dart';
 import 'package:ethos/ethos.dart';
 
 /// Ethos CLI entry point.
-///
-/// Usage:
-///   ethos -p <project-path> [options]
-///
-/// Ethos ships with the built-in WCAG 2.2 spec. You do NOT copy any spec
-/// file. To extend with your design system, create an optional `ethos.yaml`
-/// at your project root; Ethos auto-detects it.
 void main(List<String> arguments) async {
   final parser = ArgParser()
     ..addOption('project-path',
         abbr: 'p', help: 'Path to Flutter project to analyze', mandatory: true)
     ..addOption('config',
-        abbr: 'c',
-        help:
-            'Path to an ethos.yaml. Defaults to <project-path>/ethos.yaml if present.')
+        abbr: 'c', help: 'Path to an ethos.yaml (default: auto-detect).')
     ..addOption('report-type',
         abbr: 'r',
-        help: 'Report format: json, human, markdown, coverage',
+        help: 'Output format: human | json | markdown | coverage',
         defaultsTo: 'human',
         allowed: ['json', 'human', 'markdown', 'coverage'])
     ..addOption('output',
-        abbr: 'o', help: 'Output file path (optional, defaults to stdout)')
+        abbr: 'o', help: 'Write report to this file instead of stdout')
+    ..addFlag('deep',
+        abbr: 'd',
+        help: 'Deep analysis: resolves types and cross-file references.\n'
+            'Slower but more precise. Requires `flutter pub get` in the project.\n'
+            'Falls back to standard mode automatically if the project is not ready.',
+        defaultsTo: false)
     ..addFlag('verbose',
-        abbr: 'v', help: 'Print detailed information', defaultsTo: false)
+        abbr: 'v',
+        help: 'Print progress details (written to stderr)',
+        defaultsTo: false)
     ..addFlag('help', abbr: 'h', help: 'Show help message', negatable: false);
 
   try {
@@ -40,49 +39,122 @@ void main(List<String> arguments) async {
     final configPath = results['config'] as String?;
     final reportType = results['report-type'] as String;
     final outputPath = results['output'] as String?;
+    final deepMode = results['deep'] as bool;
     final verbose = results['verbose'] as bool;
 
     if (verbose) {
       stderr.writeln('📋 Ethos — Accessibility Coverage Analyzer');
       stderr.writeln('  Project: $projectPath');
-      if (configPath != null) {
-        stderr.writeln('  Config: $configPath (explicit)');
-      } else {
-        final auto = '$projectPath${Platform.pathSeparator}ethos.yaml';
-        stderr.writeln(File(auto).existsSync()
-            ? '  Config: $auto (auto-detected)'
-            : '  Config: (none — using built-in spec only)');
-      }
+      stderr.writeln('  Mode: ${deepMode ? "deep 🔬" : "standard"}');
+      final cfgAuto = '$projectPath${Platform.pathSeparator}ethos.yaml';
+      stderr.writeln(configPath != null
+          ? '  Config: $configPath (explicit)'
+          : File(cfgAuto).existsSync()
+              ? '  Config: $cfgAuto (auto-detected)'
+              : '  Config: (none — using built-in spec only)');
       stderr.writeln('  Report format: $reportType');
       stderr.writeln('');
     }
 
-    late final CoverageAnalyzer analyzer;
-    try {
-      analyzer = await CoverageAnalyzer.forProject(
+    late final CoverageReport report;
+    CoverageReport? reportHolder;
+
+    if (deepMode) {
+      final deepAnalyzer = await DeepAnalyzer.forProject(
         projectPath,
         configPath: configPath,
       );
-    } catch (e) {
-      stderr.writeln('❌ Error loading spec: $e');
-      exit(1);
-    }
 
-    if (verbose) {
-      stderr.writeln('✅ Spec loaded: v${analyzer.spec.version} '
-          '(${analyzer.spec.rules.length} rules, '
-          '${analyzer.spec.widgetAliases.length} aliases)');
-      stderr.writeln(
-          '   Detectors registered: ${analyzer.registry.registeredRuleIds.length}');
-      stderr.writeln('🔍 Analyzing project...');
-    }
+      if (verbose) {
+        stderr.writeln('Spec v${deepAnalyzer.spec.version} '
+            '(${deepAnalyzer.spec.rules.length} rules, '
+            '${deepAnalyzer.spec.widgetAliases.length} aliases)');
+      }
 
-    final report = await analyzer.analyze();
+      stderr.writeln(' Deep analysis mode');
+      bool inProgressLine = false;
 
-    if (verbose) {
-      stderr.writeln(
-          '✅ Analysis complete (${report.coverage.length} rules evaluated)');
-      stderr.writeln('');
+      await for (final event in deepAnalyzer.analyze()) {
+        switch (event) {
+          case AnalysisPreparing():
+            stderr.writeln('   Checking project readiness...');
+
+          case AnalysisLoadingContext(:final totalFiles):
+            stderr.writeln('   Loading context ($totalFiles files)...');
+
+          case AnalysisAnalyzingFile(:final current, :final total, :final path):
+            if (verbose) {
+              final bar = _progressBar(current, total);
+              stderr.writeln(
+                  '   [$current/$total] $bar ${path.split(Platform.pathSeparator).last}');
+            } else {
+              stderr.write('\r   Resolving: $current / $total');
+              inProgressLine = true;
+            }
+
+          case AnalysisRunningDetector(:final ruleTitle):
+            if (inProgressLine) {
+              stderr.writeln('');
+              inProgressLine = false;
+            }
+            stderr.writeln('   ✓ $ruleTitle');
+
+          case AnalysisWarning(:final message):
+            if (inProgressLine) {
+              stderr.writeln('');
+              inProgressLine = false;
+            }
+            stderr.writeln('⚠️  $message');
+
+          case AnalysisComplete():
+            final completedReport = (event).report;
+            final usedDeepMode = (event).usedDeepMode;
+            if (inProgressLine) {
+              stderr.writeln('');
+              inProgressLine = false;
+            }
+            stderr.writeln(usedDeepMode
+                ? ' Deep analysis complete'
+                : ' Analysis complete (fell back to standard mode)');
+            stderr.writeln('');
+            reportHolder = completedReport;
+        }
+      }
+
+      if (reportHolder == null) {
+        stderr.writeln(' Deep analysis did not complete.');
+        exit(1);
+      }
+      report = reportHolder;
+    } else {
+      // ── Standard mode ─────────────────────────────────────────────
+      late final CoverageAnalyzer analyzer;
+      try {
+        analyzer = await CoverageAnalyzer.forProject(
+          projectPath,
+          configPath: configPath,
+        );
+      } catch (e) {
+        stderr.writeln(' Error loading spec: $e');
+        exit(1);
+      }
+
+      if (verbose) {
+        stderr.writeln(' Spec v${analyzer.spec.version} '
+            '(${analyzer.spec.rules.length} rules, '
+            '${analyzer.spec.widgetAliases.length} aliases)');
+        stderr.writeln(
+            '   Detectors: ${analyzer.registry.registeredRuleIds.length}');
+        stderr.writeln(' Analyzing project...');
+      }
+
+      report = await analyzer.analyze();
+
+      if (verbose) {
+        stderr.writeln(
+            ' Analysis complete (${report.coverage.length} rules evaluated)');
+        stderr.writeln('');
+      }
     }
 
     String reportOutput;
@@ -99,26 +171,33 @@ void main(List<String> arguments) async {
 
     if (outputPath != null) {
       await File(outputPath).writeAsString(reportOutput);
-      stderr.writeln('✅ Report saved to: $outputPath');
+      stderr.writeln(' Report saved to: $outputPath');
     } else {
       stdout.writeln(reportOutput);
     }
 
     final hasCritical = report.coverage.values.any((c) => c.isCritical);
     if (hasCritical) {
-      if (verbose) stderr.writeln('\n⚠️  Critical coverage issues detected');
+      if (verbose) {
+        stderr.writeln('\n  Critical coverage issues detected');
+      }
       exit(1);
     }
     exit(0);
   } on FormatException catch (e) {
     stderr.writeln('❌ Invalid arguments: ${e.message}');
-    stderr.writeln('');
     stderr.writeln(parser.usage);
     exit(1);
   } catch (e) {
     stderr.writeln('❌ Error: $e');
     exit(1);
   }
+}
+
+String _progressBar(int current, int total) {
+  const width = 15;
+  final filled = (current / total * width).round();
+  return '[${'█' * filled}${'░' * (width - filled)}]';
 }
 
 String _generateHumanReport(CoverageReport report) {
@@ -230,9 +309,8 @@ String _generateCoverageReport(CoverageReport report) {
     if (c.indeterminate > 0) {
       buffer.writeln('- Indeterminate: ${c.indeterminate}');
     }
-    final status =
-        c.isCritical ? 'CRITICAL' : (c.total == 0 ? 'NO DATA' : 'OK');
-    buffer.writeln('- Status: $status');
+    buffer.writeln(
+        '- Status: ${c.isCritical ? "CRITICAL" : (c.total == 0 ? "NO DATA" : "OK")}');
     buffer.writeln('');
   }
   return buffer.toString();
@@ -241,16 +319,12 @@ String _generateCoverageReport(CoverageReport report) {
 void _printHelp(ArgParser parser) {
   print('Ethos — Accessibility Coverage Analyzer');
   print('');
-  print('Ethos ships with the built-in WCAG 2.2 spec — you do NOT copy any');
-  print('spec file. To extend with your design-system widgets or override');
-  print('thresholds, create an optional ethos.yaml at your project root.');
-  print('');
-  print('Usage:');
-  print('  ethos -p <project-path> [options]');
+  print('Usage: ethos -p <project-path> [options]');
   print('');
   print('Examples:');
   print('  ethos -p ./my_app');
-  print('  ethos -p ./my_app -c custom-ethos.yaml');
+  print('  ethos -p ./my_app --deep');
+  print('  ethos -p ./my_app --deep -v');
   print('  ethos -p ./my_app -r json -o report.json');
   print('  ethos -p ./my_app -r markdown -o report.md');
   print('');

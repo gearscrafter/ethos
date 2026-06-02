@@ -37,32 +37,34 @@ Unlike tools that detect individual issues, Ethos calculates **coverage metrics*
 - ✅ **Theme-aware contrast** — resolves `theme.textTheme.X` automatically from
   your `ThemeData`, and accepts explicit `color_aliases` for custom style
   variables.
+- ✅ **Deep analysis mode (`--deep`)** — uses `AnalysisContextCollection` to
+  resolve cross-file references, class hierarchies, and type information.
+  Emits `Stream<AnalysisProgress>` events for live progress. Falls back to
+  standard mode automatically if the project is not ready.
 - ✅ **Pluggable detector registry** — add or replace rules without touching the
   core engine.
-- ✅ **CI/CD ready** — JSON, Markdown, and human-readable outputs; exits with
-  code `1` on critical failures.
 
 ---
 
 ## Installation
-
+ 
 ### As a CLI
-
+ 
 ```bash
 dart pub global activate ethos
 ethos -p ./my_flutter_app
 ```
-
+ 
 ### As a library
-
+ 
 ```yaml
 dependencies:
-  ethos: ^0.3.1
+  ethos: ^0.4.0
 ```
-
+ 
 ```dart
 import 'package:ethos/ethos.dart';
-
+ 
 void main() async {
   final analyzer = await CoverageAnalyzer.forProject('./my_flutter_app');
   final report  = await analyzer.analyze();
@@ -70,45 +72,97 @@ void main() async {
   print('Compliance: ${report.complianceLevel}');
 }
 ```
-
+ 
 **You do not copy any spec file.** The built-in WCAG 2.2 spec lives inside the
 package.
-
+ 
 ---
-
+ 
 ## Quick start (local development)
-
+ 
 ```bash
 git clone https://github.com/gearscrafter/ethos.git
 cd ethos
 dart pub get
-
+ 
 # Run against the bundled fixtures
 dart run example/main.dart
-
+ 
 # Run against your own Flutter project
 dart run bin/analyze.dart -p ./my_flutter_app
-
+ 
 # Install locally as a global command
 dart pub global activate --source path .
 ethos -p ./my_flutter_app
 ```
-
+ 
 ---
-
+ 
+## Standard vs Deep analysis
+ 
+Ethos has two analysis modes:
+ 
+| | Standard | Deep (`--deep`) |
+|---|---|---|
+| Speed | Fast (seconds) | Slower (10–60s) |
+| Cross-file resolution | ✗ | ✅ |
+| Class hierarchy traversal | ✗ | ✅ |
+| Variable type resolution | ✗ | ✅ |
+| Progress stream | ✗ | ✅ |
+| Requires `flutter pub get` | ✗ | ✅ (auto-detects) |
+ 
+Standard mode is ideal for quick checks and CI gates. Deep mode is for
+comprehensive audits — it finds widgets that standard mode misses because
+they are defined in a different file from where they are used.
+ 
+```bash
+# Standard
+ethos -p ./my_app
+ 
+# Deep — with live progress
+ethos -p ./my_app --deep -v
+```
+ 
+Deep mode falls back to standard automatically if `.dart_tool/package_config.json`
+is missing.
+ 
+### Deep mode as a library
+ 
+```dart
+final deepAnalyzer = await DeepAnalyzer.forProject('./my_app');
+ 
+await for (final event in deepAnalyzer.analyze()) {
+  switch (event) {
+    case AnalysisLoadingContext(:final totalFiles):
+      print('Loading $totalFiles files...');
+    case AnalysisAnalyzingFile(:final current, :final total):
+      print('[$current/$total]');
+    case AnalysisWarning(:final message):
+      print('⚠️  $message');
+    case AnalysisComplete():
+      final report = (event as AnalysisComplete).report;
+      print(report.toJsonString());
+    default:
+      break;
+  }
+}
+```
+ 
+---
+ 
 ## Configuration (optional): `ethos.yaml`
-
+ 
 Ethos works out of the box — the built-in spec already covers Flutter's
 standard widgets (`GestureDetector`, `InkWell`, `IconButton`, `TextField`,
 etc.).
-
+ 
 Most real apps wrap controls in their own design-system components and define
 colors in a custom style object. Drop an `ethos.yaml` next to your
 `pubspec.yaml` to teach Ethos about them:
-
+ 
 ```yaml
 # ethos.yaml — OPTIONAL. Ethos auto-detects it; no flag needed.
-
+ 
 widget_aliases:
   # Key = your widget's class name exactly as written in code.
   CircleIconBtn:
@@ -116,60 +170,57 @@ widget_aliases:
     label_arg: semanticLabel # which arg carries the accessible label
     size_guaranteed: true    # already wraps a >= 48×48 target internally?
     keyboard_ready: true     # keyboard-operable out of the box?
-
+ 
   AppButton:
     role: button
     label_arg: a11yLabel
-
+ 
 color_aliases:
   # Teach Ethos about your design-system color expressions so the contrast
   # rule can compute real WCAG ratios instead of reporting "indeterminate".
-  # Key = exact source expression as written in code.
   "$styles.text.body":
     foreground: "#212121"   # required — the text color
     background: "#FFFFFF"   # optional — the default background color
-
+ 
   "$styles.colors.primary":
     foreground: "#1565C0"
-
+ 
 # Optional: tighten a threshold without rewriting the spec.
 # rule_overrides:
 #   wcag_1_4_3_contrast_minimum:
 #     critical_threshold: 95
 ```
-
-What each section teaches:
-
+ 
 **`widget_aliases`**
-
+ 
 | Field             | Detector                                | Effect                                        |
 |-------------------|-----------------------------------------|-----------------------------------------------|
 | `role: button`    | Semantic Labels, Keyboard, Touch Target | Widget counts as an interactive control.      |
 | `label_arg`       | Semantic Labels                         | Look for the semantic label in this argument. |
 | `size_guaranteed` | Touch Target Size                       | Auto-PASS — already ≥ 48×48 internally.       |
 | `keyboard_ready`  | Keyboard Accessibility                  | Auto-PASS — keyboard-operable out of the box. |
-
+ 
 **`color_aliases`**
-
+ 
 Maps a design-system style expression to concrete hex colors. Both
 `#RRGGBB` and `#AARRGGBB` formats are accepted. When `background` is
-omitted, Ethos cannot compute a ratio and the element remains indeterminate.
-
-No `ethos.yaml`? Ethos still runs on the built-in spec. Custom widgets and
-colors appear as indeterminate. For a vanilla Flutter project that's already
-useful; for a project with a design system, the aliases make all the
-difference.
-
+omitted, the element remains indeterminate.
+ 
+No `ethos.yaml`? Ethos still runs on the built-in spec. For a vanilla Flutter
+project that's already useful; for a project with a design system, the aliases
+make all the difference — and deep mode can discover many of them automatically.
+ 
 ---
-
+ 
 ## Supported rules
-
-Five built-in rules, all backed by a `RecursiveAstVisitor` on real Dart AST.
-
+ 
+Five built-in rules, all backed by `RecursiveAstVisitor` on real Dart AST.
+Deep mode runs enhanced versions of rules 1 and 2.
+ 
 ### 1. Semantic Labels — `wcag_1_3_1_semantics_label` (WCAG 1.3.1 · Level A)
-
+ 
 Custom interactive widgets must have an accessible label.
-
+ 
 - **In scope:** `GestureDetector`, `InkWell`, `InkResponse` with tap-like
   gestures, plus any `role: button` alias from `ethos.yaml`.
 - **Pass:** wrapped in `Semantics(label: '<non-empty literal>')` as ancestor or
@@ -177,158 +228,140 @@ Custom interactive widgets must have an accessible label.
 - **Indeterminate:** label is a variable, interpolation, or runtime call.
 - **Excluded automatically:** `excludeFromSemantics: true`, drag/pan-only
   gestures, `onTap: () {}` (block-parent), tap-to-dismiss patterns.
-
+- **Deep mode:** also follows widget definitions across files and detects
+  cross-method `Semantics` wrappers.
 ```dart
 // ✅ PASS — Semantics as ancestor
 Semantics(
   label: 'Open profile',
   child: GestureDetector(onTap: () {}, child: Icon(Icons.person)),
 )
-
+ 
 // ✅ PASS — Semantics as descendant also works
 GestureDetector(
   onTap: () => navigate(),
   child: Semantics(label: 'Go to settings', child: Icon(Icons.settings)),
 )
-
+ 
 // ❌ FAIL
 GestureDetector(onTap: () => navigate(), child: Icon(Icons.settings))
 ```
-
+ 
 ### 2. Minimum Color Contrast — `wcag_1_4_3_contrast_minimum` (WCAG 1.4.3 · Level AA)
-
-Text must have at least 4.5:1 contrast (3:1 for large text ≥ 18 pt) using the
-real WCAG luminance formula. Resolution is attempted in three layers:
-
+ 
+Text must have at least 4.5:1 contrast (3:1 for large text ≥ 18 pt).
+Resolution is attempted in layers:
+ 
 1. **Inline literals** — `TextStyle(color: Color(0xFF...), backgroundColor: ...)`.
 2. **ThemeData extraction** — resolves `theme.textTheme.bodyLarge` etc.
-   automatically from your `MaterialApp(theme: ThemeData(...))`.
-3. **`color_aliases`** — resolves design-system expressions like
-   `$styles.text.body` from your `ethos.yaml`.
-
+3. **`color_aliases`** — resolves design-system expressions from `ethos.yaml`.
+4. **Deep mode only** — follows variable references across files.
 ```dart
 // ✅ PASS — ratio 21:1
-Text('Hello', style: TextStyle(
-  color: Colors.black,
-  backgroundColor: Colors.white,
-))
-
+Text('Hello', style: TextStyle(color: Colors.black, backgroundColor: Colors.white))
+ 
 // ❌ FAIL — ratio ~1.6:1
-Text('Hello', style: TextStyle(
-  color: Color(0xFFCCCCCC),
-  backgroundColor: Colors.white,
-))
-
-Text('Hello', style: theme.textTheme.bodyLarge)
-
-// ✅ PASS via color_aliases (if declared in ethos.yaml)
-// Text('Hello', style: $styles.text.body)
+Text('Hello', style: TextStyle(color: Color(0xFFCCCCCC), backgroundColor: Colors.white))
+ 
+// ⓘ INDETERMINATE in standard mode; resolved in deep mode
+Text('Hello', style: TextStyle(color: bodyColor))  // bodyColor defined elsewhere
 ```
-
+ 
 ### 3. Touch Target Size — `wcag_2_5_5_target_size_enhanced` (WCAG 2.5.5 · Level AAA)
-
+ 
 Interactive elements must be at least 48×48 logical pixels.
-
-- **Auto-pass:** `IconButton`, `FloatingActionButton` (Flutter guarantees
-  48×48); aliases with `size_guaranteed: true`.
-- **Verifiable:** custom interactive widget inside a `SizedBox` or `Container`
-  with literal `width`/`height` — pass if both ≥ 48, fail otherwise.
-- **Indeterminate:** size from a variable, intrinsic content, or
-  `tapTargetSize: shrinkWrap`.
-
+ 
+- **Auto-pass:** `IconButton`, `FloatingActionButton`; aliases with `size_guaranteed: true`.
+- **Verifiable:** custom widget in a `SizedBox`/`Container` with literal dimensions.
+- **Indeterminate:** size from a variable or intrinsic content.
 ### 4. Keyboard Accessibility — `wcag_2_1_1_keyboard` (WCAG 2.1.1 · Level A)
-
+ 
 All interactive functionality must be reachable by keyboard.
-
-- **Pass:** Material controls (`ElevatedButton`, `TextField`, `InkWell`, etc.);
-  `GestureDetector` under a `Focus`, `FocusScope`, `Shortcuts`, or
-  `KeyboardListener` ancestor; aliases with `keyboard_ready: true`.
-- **Fail:** `GestureDetector.onTap` with no keyboard path in its ancestor chain.
-- **Excluded:** widgets with `excludeFromSemantics: true` (visual-only wrappers).
-
+ 
+- **Pass:** Material controls; `GestureDetector` under `Focus`/`FocusScope`/
+  `Shortcuts`/`KeyboardListener`; aliases with `keyboard_ready: true`.
+- **Fail:** `GestureDetector.onTap` with no keyboard path.
+- **Excluded:** `excludeFromSemantics: true` (visual-only wrappers).
 ### 5. Focus Order — `wcag_2_4_3_focus_order` (WCAG 2.4.3 · Level A)
-
+ 
 Multi-input layouts must declare explicit focus management.
-
-- **In scope:** `Form` widgets, or any layout with 2+ focusable inputs
-  (`TextField`, `Checkbox`, `Radio`, etc.).
-- **Pass:** declares `FocusNode`, `FocusScope`, `FocusTraversalGroup`, or
-  `autofocus: true`.
-
+ 
+- **In scope:** `Form` widgets, or layouts with 2+ focusable inputs.
+- **Pass:** declares `FocusNode`, `FocusScope`, `FocusTraversalGroup`, or `autofocus: true`.
 ---
-
+ 
 ## CLI reference
-
+ 
 ```
 ethos -p <project-path> [options]
-
+ 
 Options:
   -p, --project-path   Path to the Flutter project to analyze (required)
   -c, --config         Path to a custom ethos.yaml (default: auto-detect)
   -r, --report-type    Output format: human | json | markdown | coverage
                        (default: human)
   -o, --output         Write report to this file instead of stdout
+  -d, --deep           Deep analysis: resolves types and cross-file references.
+                       Slower but more precise. Requires `flutter pub get`.
+                       Falls back to standard mode if project is not ready.
   -v, --verbose        Show progress details (written to stderr)
   -h, --help           Show this help
-
+ 
 Examples:
   ethos -p ./my_app
+  ethos -p ./my_app --deep
+  ethos -p ./my_app --deep -v
   ethos -p ./my_app -c path/to/ethos.yaml
   ethos -p ./my_app -r json -o report.json
   ethos -p ./my_app -r markdown -o report.md
-  ethos -p ./my_app -v
 ```
-
+ 
 Verbose logs go to **stderr** so `ethos -p . -r json | jq` works cleanly.
-Exit code `1` when any rule is below its critical threshold — useful as a CI
-gate.
-
+Exit code `1` when any rule is below its critical threshold — useful as a CI gate.
+ 
 ---
-
+ 
 ## Compliance levels
-
+ 
 | Level | Minimum coverage | Description                           |
 |-------|-----------------|---------------------------------------|
 | AAA   | ≥ 95%           | Enhanced accessibility                |
 | AA    | ≥ 85%           | Strong accessibility (typical target) |
 | A     | ≥ 70%           | Basic accessibility                   |
 | NONE  | < 70%           | Does not meet minimum standards       |
-
+ 
 ---
-
+ 
 ## Library API reference
-
+ 
 ```dart
-// Standard entry point — built-in spec + optional ethos.yaml auto-merge
+// Standard entry point
 final analyzer = await CoverageAnalyzer.forProject('./my_app');
-
-// With explicit config file
-final analyzer = await CoverageAnalyzer.forProject(
-  './my_app',
-  configPath: 'path/to/ethos.yaml',
-);
-
-// Run analysis
 final report = await analyzer.analyze();
-
-// Output options
+ 
+// Deep entry point
+final deepAnalyzer = await DeepAnalyzer.forProject('./my_app');
+await for (final event in deepAnalyzer.analyze()) {
+  if (event is AnalysisComplete) {
+    final report = (event as AnalysisComplete).report;
+    print(report.toJsonString());
+  }
+}
+ 
+// Output
 print(report.overallCoverage);   // double 0–100
 print(report.complianceLevel);   // 'A' | 'AA' | 'AAA' | 'NONE'
 print(report.toJsonString());    // JSON for CI pipelines
 ```
-
-Advanced: `CoverageAnalyzer.loadFromFile(specPath, projectPath: ...)` and
-`.fromString(yaml, projectPath: ...)` load a fully custom spec instead of the
-built-in.
-
+ 
 ---
-
+ 
 ## Architecture
-
+ 
 ```
 ethos/
 ├── bin/
-│   └── analyze.dart               # CLI entry point
+│   └── analyze.dart               # CLI entry point (--deep flag)
 ├── lib/
 │   ├── ethos.dart                 # Public barrel export
 │   └── src/
@@ -340,37 +373,32 @@ ethos/
 │       │   ├── wcag_2_2.yaml          # Source spec — edit this
 │       │   └── wcag_2_2_embedded.dart # Generated constant — do not edit
 │       └── analyzer/
-│           ├── coverage_analyzer.dart  # Engine (forProject / analyze)
-│           ├── spec_loader.dart        # Built-in + ethos.yaml merge
+│           ├── coverage_analyzer.dart  # Standard engine
+│           ├── spec_loader.dart
 │           ├── detector_registry.dart
 │           ├── rule_detector.dart      # RuleDetector interface
 │           ├── ast/widget_visitor.dart
 │           ├── utils/
-│           │   ├── color_resolver.dart  # WCAG luminance + Colors.* map
-│           │   └── theme_extractor.dart # ThemeData color extraction
-│           └── detectors/
-│               ├── semantic_labels_detector.dart
-│               ├── contrast_detector.dart
-│               ├── touch_target_detector.dart
-│               ├── keyboard_detector.dart
-│               └── focus_order_detector.dart
+│           │   ├── color_resolver.dart
+│           │   └── theme_extractor.dart
+│           ├── detectors/              # 5 standard detectors
+│           └── deep/
+│               ├── deep_analyzer.dart       # Deep engine (Stream)
+│               ├── deep_detector.dart       # DeepDetector interface
+│               ├── analysis_progress.dart   # Sealed class: 6 event types
+│               ├── resolved_file.dart       # ResolvedFile + ProjectIndex
+│               └── detectors/
+│                   ├── cross_file_semantic_labels_detector.dart
+│                   └── resolved_contrast_detector.dart
 ├── example/
 │   ├── main.dart
 │   └── fixtures/
-│       ├── ethos.yaml             # Sample widget + color aliases
-│       └── lib/                   # Sample Dart files (analysis input only)
-├── test/
+│       ├── ethos.yaml
+│       └── lib/
 └── tool/
-    └── embed_spec.dart            # Regenerates wcag_2_2_embedded.dart
+    └── embed_spec.dart
 ```
-
-When editing the built-in spec (`lib/src/specs/v1/wcag_2_2.yaml`), regenerate
-the embedded constant:
-
-```bash
-dart run tool/embed_spec.dart
-```
-
+ 
 ---
 
 ## Roadmap
