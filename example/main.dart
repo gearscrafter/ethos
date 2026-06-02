@@ -9,6 +9,11 @@ import 'package:ethos/ethos.dart';
 /// how Ethos reports matched, failed, and indeterminate widgets with
 /// file:line:column locations.
 ///
+/// The fixtures folder also contains an optional `ethos.yaml` that
+/// declares a sample widget alias (CircleIconBtn) — this demonstrates
+/// how your own design-system widgets can be taught to Ethos without
+/// modifying any package code.
+///
 /// Run from the package root:
 /// ```
 /// dart run example/main.dart
@@ -20,22 +25,24 @@ void main() async {
   print('');
 
   try {
-    print('📋 Loading specifications...');
-    final analyzer =
-        await CoverageAnalyzer.loadFromFile('specs/v1.0.0/wcag_2_2.yaml');
+    const projectPath = 'example/fixtures';
 
-    print('✅ Loaded spec v${analyzer.spec.version}');
+    print('📋 Loading spec...');
+    final analyzer = await CoverageAnalyzer.forProject(projectPath);
+
+    print('Spec v${analyzer.spec.version}');
     print(
         '   WCAG: ${analyzer.spec.wcagVersion} Level ${analyzer.spec.wcagLevel}');
     print('   Rules in spec: ${analyzer.spec.rules.length}');
     print('   Detectors registered: '
         '${analyzer.registry.registeredRuleIds.length}');
+    if (analyzer.spec.widgetAliases.isNotEmpty) {
+      print('   Widget aliases: ${analyzer.spec.widgetAliases.keys.join(', ')}');
+    }
     print('');
 
-    const projectPath = 'example/fixtures';
-
     print('🔍 Analyzing project: $projectPath');
-    final report = await analyzer.analyze(projectPath: projectPath);
+    final report = await analyzer.analyze();
     print('✅ Analysis complete');
     print('');
 

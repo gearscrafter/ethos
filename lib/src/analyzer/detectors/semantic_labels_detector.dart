@@ -13,21 +13,6 @@ import '../rule_detector.dart';
 /// A custom interactive widget (`GestureDetector`, `InkWell`, `InkResponse`)
 /// that behaves as a discrete control. Specifically EXCLUDED:
 ///
-/// - Widgets with `excludeFromSemantics: true` — the developer explicitly
-///   opted them out of the accessibility tree (e.g. a visual press-effect
-///   wrapper whose semantics live on an ancestor).
-/// - `GestureDetector`s that only handle drag/pan/scale gestures (no
-///   tap/double-tap/long-press). Those are continuous navigation gestures;
-///   their accessibility is a keyboard/alternative-input concern (WCAG
-///   2.1.1), not a label concern.
-///
-/// ## Outcomes (per in-scope widget)
-///
-/// - **matched:** wrapped in a `Semantics(label: '<non-empty literal>')`.
-/// - **indeterminate:** wrapped in `Semantics` whose `label:` is resolved at
-///   runtime (variable / interpolation). Reported separately, not counted.
-/// - **fail:** no `Semantics(label:)` ancestor, or label is empty.
-///
 class SemanticLabelsDetector implements RuleDetector {
   static const _customInteractive = {
     'GestureDetector',
@@ -42,6 +27,7 @@ class SemanticLabelsDetector implements RuleDetector {
   DetectionResult analyze({
     required Rule rule,
     required List<ParsedFile> files,
+    Map<String, WidgetAlias> aliases = const {},
   }) {
     int matched = 0;
     int total = 0;
@@ -50,16 +36,40 @@ class SemanticLabelsDetector implements RuleDetector {
 
     for (final file in files) {
       for (final widget in file.widgets) {
+        final alias = aliases[widget.type];
+        if (alias != null && alias.role == WidgetRole.button) {
+          if (alias.labelArg == null) {
+            indeterminate++;
+            continue;
+          }
+          total++;
+          final labelValue = widget.arg(alias.labelArg!);
+          final state = _classifyExpression(labelValue);
+          switch (state) {
+            case _LabelState.literalNonEmpty:
+              matched++;
+            case _LabelState.indeterminate:
+              total--;
+              indeterminate++;
+            case _LabelState.empty:
+            case _LabelState.missing:
+              findings.add(Finding(
+                filePath: file.path,
+                line: widget.line,
+                column: widget.column,
+                widgetType: widget.type,
+                message:
+                    '${widget.type} has no non-empty "${alias.labelArg}" '
+                    '(declared as a button in ethos.yaml widget_aliases).',
+              ));
+          }
+          continue;
+        }
+
         if (!_customInteractive.contains(widget.type)) continue;
         if (_hasExcludeFromSemantics(widget)) continue;
-
-        if (widget.type == 'GestureDetector' && !_hasTapGesture(widget)) {
-          continue;
-        }
-
-        if (widget.type == 'GestureDetector' && _isNonInteractiveTap(widget)) {
-          continue;
-        }
+        if (widget.type == 'GestureDetector' && !_hasTapGesture(widget)) continue;
+        if (widget.type == 'GestureDetector' && _isNonInteractiveTap(widget)) continue;
 
         total++;
 
@@ -76,8 +86,8 @@ class SemanticLabelsDetector implements RuleDetector {
               column: widget.column,
               widgetType: widget.type,
               message:
-                  'Wrapped in Semantics, but label is not a literal (resolved at runtime). '
-                  'Cannot verify it is non-empty.',
+                  'Wrapped in Semantics, but label is not a literal '
+                  '(resolved at runtime). Cannot verify it is non-empty.',
               severity: FindingSeverity.indeterminate,
             ));
           case _LabelState.missing:
@@ -96,8 +106,7 @@ class SemanticLabelsDetector implements RuleDetector {
               line: widget.line,
               column: widget.column,
               widgetType: widget.type,
-              message:
-                  'Wrapped in Semantics, but label is an empty string.',
+              message: 'Wrapped in Semantics, but label is an empty string.',
             ));
         }
       }
@@ -111,18 +120,15 @@ class SemanticLabelsDetector implements RuleDetector {
     );
   }
 
+
   bool _hasExcludeFromSemantics(WidgetUsage widget) {
     final arg = widget.arg('excludeFromSemantics');
     return arg is BooleanLiteral && arg.value == true;
   }
 
   static const _tapGestures = {
-    'onTap',
-    'onTapDown',
-    'onTapUp',
-    'onDoubleTap',
-    'onLongPress',
-    'onSecondaryTap',
+    'onTap', 'onTapDown', 'onTapUp',
+    'onDoubleTap', 'onLongPress', 'onSecondaryTap',
   };
 
   bool _hasTapGesture(WidgetUsage widget) {
@@ -135,25 +141,16 @@ class SemanticLabelsDetector implements RuleDetector {
   bool _isNonInteractiveTap(WidgetUsage widget) {
     final onTap = widget.arg('onTap');
     if (onTap == null) return false;
-
     if (onTap is FunctionExpression) {
       final body = onTap.body;
-      if (body is BlockFunctionBody && body.block.statements.isEmpty) {
-        return true;
-      }
-      if (body is ExpressionFunctionBody) {
-        if (_mentionsUnfocus(body.expression)) return true;
-      }
+      if (body is BlockFunctionBody && body.block.statements.isEmpty) return true;
+      if (body is ExpressionFunctionBody && _mentionsUnfocus(body.expression)) return true;
     }
-
     if (_mentionsUnfocus(onTap)) return true;
-
     return false;
   }
 
-  bool _mentionsUnfocus(Expression expr) {
-    return expr.toString().contains('unfocus');
-  }
+  bool _mentionsUnfocus(Expression expr) => expr.toString().contains('unfocus');
 
   _LabelState _resolveLabel(WidgetUsage widget) {
     final ancestor = _findEnclosingSemantics(widget.node);
@@ -161,44 +158,36 @@ class SemanticLabelsDetector implements RuleDetector {
       final state = _labelStateOf(ancestor);
       if (state != _LabelState.missing) return state;
     }
-
     final descendant = _findDescendantSemantics(widget.node);
     if (descendant != null) {
       final state = _labelStateOf(descendant);
       if (state != _LabelState.missing) return state;
     }
-
     return _LabelState.missing;
   }
 
   _LabelState _labelStateOf(AstNode semanticsNode) {
-    final labelArg = _namedArg(semanticsNode, 'label');
-    if (labelArg == null) return _LabelState.missing;
+    return _classifyExpression(_namedArg(semanticsNode, 'label'));
+  }
 
-    if (labelArg is StringLiteral) {
-      final value = labelArg.stringValue;
-      if (value == null) {
-        return _LabelState.indeterminate;
-      }
-      return value.trim().isEmpty
-          ? _LabelState.empty
-          : _LabelState.literalNonEmpty;
+  _LabelState _classifyExpression(Expression? expr) {
+    if (expr == null) return _LabelState.missing;
+    if (expr is StringLiteral) {
+      final value = expr.stringValue;
+      if (value == null) return _LabelState.indeterminate;
+      return value.trim().isEmpty ? _LabelState.empty : _LabelState.literalNonEmpty;
     }
-
     return _LabelState.indeterminate;
   }
 
   AstNode? _findEnclosingSemantics(AstNode node) {
     AstNode? current = node.parent;
     while (current != null) {
-      if (_constructorNameOf(current) == 'Semantics') {
-        return current;
-      }
+      if (_constructorNameOf(current) == 'Semantics') return current;
       current = current.parent;
     }
     return null;
   }
-
 
   AstNode? _findDescendantSemantics(AstNode node) {
     final finder = _DescendantSemanticsFinder(
@@ -211,59 +200,33 @@ class SemanticLabelsDetector implements RuleDetector {
   }
 
   String? _constructorNameOf(AstNode node) {
-    if (node is InstanceCreationExpression) {
-      return node.constructorName.type.name2.lexeme;
-    }
-    if (node is MethodInvocation && node.realTarget == null) {
-      return node.methodName.name;
-    }
+    if (node is InstanceCreationExpression) return node.constructorName.type.name2.lexeme;
+    if (node is MethodInvocation && node.realTarget == null) return node.methodName.name;
     return null;
   }
 
-  /// Returns the named argument [name] from a widget construction node,
-  /// regardless of whether it is an InstanceCreationExpression or a
-  /// MethodInvocation.
   Expression? _namedArg(AstNode node, String name) {
     final args = _argumentsOf(node);
     if (args == null) return null;
     for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == name) {
-        return arg.expression;
-      }
+      if (arg is NamedExpression && arg.name.label.name == name) return arg.expression;
     }
     return null;
   }
 
   NodeList<Expression>? _argumentsOf(AstNode node) {
-    if (node is InstanceCreationExpression) {
-      return node.argumentList.arguments;
-    }
-    if (node is MethodInvocation) {
-      return node.argumentList.arguments;
-    }
+    if (node is InstanceCreationExpression) return node.argumentList.arguments;
+    if (node is MethodInvocation) return node.argumentList.arguments;
     return null;
   }
 }
 
-enum _LabelState {
-  /// Wrapped in Semantics(label: 'literal non-empty string').
-  literalNonEmpty,
-
-  /// Wrapped in Semantics, but label is identifier / interpolation / call.
-  indeterminate,
-
-  /// No Semantics ancestor, or Semantics without label argument.
-  missing,
-
-  /// Wrapped in Semantics(label: '') or whitespace-only.
-  empty,
-}
+enum _LabelState { literalNonEmpty, indeterminate, missing, empty }
 
 class _DescendantSemanticsFinder extends RecursiveAstVisitor<void> {
   final Set<String> stopTypes;
   final AstNode rootNode;
   final String? Function(AstNode) nameOf;
-
   AstNode? found;
 
   _DescendantSemanticsFinder({
@@ -273,30 +236,18 @@ class _DescendantSemanticsFinder extends RecursiveAstVisitor<void> {
   });
 
   void _check(AstNode node, void Function() descend) {
-    if (found != null) return; // already found, stop work
-
+    if (found != null) return;
     final name = nameOf(node);
-
-    if (name == 'Semantics') {
-      found = node;
-      return;
-    }
-
-
-    if (node != rootNode && name != null && stopTypes.contains(name)) {
-      return;
-    }
-
+    if (name == 'Semantics') { found = node; return; }
+    if (node != rootNode && name != null && stopTypes.contains(name)) return;
     descend();
   }
 
   @override
-  void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    _check(node, () => super.visitInstanceCreationExpression(node));
-  }
+  void visitInstanceCreationExpression(InstanceCreationExpression node) =>
+      _check(node, () => super.visitInstanceCreationExpression(node));
 
   @override
-  void visitMethodInvocation(MethodInvocation node) {
-    _check(node, () => super.visitMethodInvocation(node));
-  }
+  void visitMethodInvocation(MethodInvocation node) =>
+      _check(node, () => super.visitMethodInvocation(node));
 }

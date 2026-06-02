@@ -1,0 +1,220 @@
+# Accessibility Coverage Specifications v1.0.0
+# Based on WCAG 2.2 Level AA
+# Released: 2026-04-01
+# Status: Stable
+#
+# This file is the BUILT-IN spec shipped inside the Ethos package.
+# Users should NOT copy or edit this file. Instead, they create an optional
+# `ethos.yaml` in their project root to declare aliases or overrides.
+# See the README for the extension model.
+
+spec:
+  version: "1.0.0"
+  wcag_version: "2.2"
+  wcag_level: "AA"
+  release_date: "2026-04-01"
+  standards:
+    - "WCAG 2.2 Level AA"
+    - "Material Design 3"
+    - "Flutter Best Practices"
+
+categories:
+  semantics:
+    id: "semantics"
+    name: "Semantic Information"
+    description: "Widgets must provide semantic information for screen readers"
+    wcag_principles: ["Perceivable", "Understandable"]
+  contrast:
+    id: "contrast"
+    name: "Color Contrast"
+    description: "Text and UI elements must have sufficient color contrast"
+    wcag_principles: ["Perceivable"]
+  touch_targets:
+    id: "touch_targets"
+    name: "Touch Target Size"
+    description: "Interactive elements must be large enough to tap accurately"
+    wcag_principles: ["Operable"]
+  keyboard_navigation:
+    id: "keyboard_navigation"
+    name: "Keyboard Navigation"
+    description: "All functionality must be operable via keyboard"
+    wcag_principles: ["Operable"]
+  focus_management:
+    id: "focus_management"
+    name: "Focus Management"
+    description: "Focus must be visible and managed logically"
+    wcag_principles: ["Operable"]
+
+rules:
+  - rule_id: "wcag_1_3_1_semantics_label"
+    category: "semantics"
+    severity: "critical"
+    wcag_criterion: "1.3.1"
+    wcag_level: "A"
+    title: "Semantic Labels on Interactive Widgets"
+    description: |
+      All interactive widgets (GestureDetector, InkWell, custom buttons)
+      must be wrapped in Semantics widget with a label attribute.
+    applies_to:
+      - "GestureDetector"
+      - "InkWell"
+      - "InkResponse"
+    excludes:
+      - "ElevatedButton"
+      - "TextButton"
+      - "IconButton"
+      - "FloatingActionButton"
+    coverage_metric:
+      id: "semantic_label_coverage"
+      formula: "(widgets_with_semantics_label / total_custom_interactive_widgets) * 100"
+      unit: "percentage"
+      target: 100
+      critical_threshold: 80
+    test_cases:
+      - name: "GestureDetector with Semantics label"
+        expected_result: "PASS"
+      - name: "GestureDetector WITHOUT Semantics label"
+        expected_result: "FAIL"
+    how_to_fix: |
+      Wrap custom interactive widgets in Semantics with a non-empty label.
+    references:
+      wcag: "https://www.w3.org/WAI/WCAG21/Understanding/info-and-relationships"
+      flutter: "https://docs.flutter.dev/ui/accessibility"
+
+  - rule_id: "wcag_1_4_3_contrast_minimum"
+    category: "contrast"
+    severity: "high"
+    wcag_criterion: "1.4.3"
+    wcag_level: "AA"
+    title: "Minimum Color Contrast"
+    description: |
+      Text and interactive elements must have a minimum contrast ratio
+      of 4.5:1 for normal text and 3:1 for large text.
+    applies_to: ["Text"]
+    excludes: []
+    coverage_metric:
+      id: "contrast_coverage"
+      formula: "(elements_meeting_4_5_1 / total_text_elements) * 100"
+      unit: "percentage"
+      target: 100
+      critical_threshold: 90
+    test_cases:
+      - name: "Black text on white background"
+        expected_result: "PASS"
+      - name: "Light grey on white (insufficient)"
+        expected_result: "FAIL"
+    how_to_fix: "Use a contrast checker; aim for >= 4.5:1 normal / >= 3:1 large."
+    references:
+      wcag: "https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum"
+
+  - rule_id: "wcag_2_5_5_target_size_enhanced"
+    category: "touch_targets"
+    severity: "high"
+    wcag_criterion: "2.5.5"
+    wcag_level: "AAA"
+    title: "Touch Target Size (Enhanced)"
+    description: |
+      Interactive elements must be at least 48x48 logical pixels (dp).
+    applies_to: ["GestureDetector", "InkWell", "IconButton", "FloatingActionButton"]
+    excludes: []
+    coverage_metric:
+      id: "touch_target_coverage"
+      formula: "(elements_48x48_or_larger / total_interactive_elements) * 100"
+      unit: "percentage"
+      target: 100
+      critical_threshold: 90
+    test_cases:
+      - name: "IconButton default (auto 48x48)"
+        expected_result: "PASS"
+      - name: "GestureDetector in SizedBox(32,32)"
+        expected_result: "FAIL"
+    how_to_fix: "Ensure interactive elements are at least 48x48 dp."
+    references:
+      wcag: "https://www.w3.org/WAI/WCAG21/Understanding/target-size-enhanced"
+      material: "https://m3.material.io/foundations/interaction-states"
+
+  - rule_id: "wcag_2_1_1_keyboard"
+    category: "keyboard_navigation"
+    severity: "critical"
+    wcag_criterion: "2.1.1"
+    wcag_level: "A"
+    title: "Keyboard Accessibility"
+    description: |
+      All functionality must be operable via keyboard navigation.
+    applies_to: ["GestureDetector"]
+    excludes: []
+    coverage_metric:
+      id: "keyboard_navigation_coverage"
+      formula: "(features_keyboard_accessible / total_interactive_features) * 100"
+      unit: "percentage"
+      target: 100
+      critical_threshold: 95
+    test_cases:
+      - name: "ElevatedButton (keyboard ready)"
+        expected_result: "PASS"
+      - name: "Custom GestureDetector without keyboard path"
+        expected_result: "FAIL"
+    how_to_fix: "Wrap custom gestures in Focus/Shortcuts or use Material controls."
+    references:
+      wcag: "https://www.w3.org/WAI/WCAG21/Understanding/keyboard"
+
+  - rule_id: "wcag_2_4_3_focus_order"
+    category: "focus_management"
+    severity: "high"
+    wcag_criterion: "2.4.3"
+    wcag_level: "A"
+    title: "Focus Order"
+    description: |
+      Focus order must be logical and meaningful.
+    applies_to: ["Form"]
+    excludes: []
+    coverage_metric:
+      id: "focus_management_coverage"
+      formula: "(screens_with_proper_focus / total_screens) * 100"
+      unit: "percentage"
+      target: 95
+      critical_threshold: 80
+    test_cases:
+      - name: "Form with autofocus and ordered fields"
+        expected_result: "PASS"
+      - name: "Form with no focus management"
+        expected_result: "FAIL"
+    how_to_fix: "Use FocusNode, FocusScope, FocusTraversalGroup, or autofocus."
+    references:
+      wcag: "https://www.w3.org/WAI/WCAG21/Understanding/focus-order"
+
+compliance:
+  level_a:
+    name: "Level A"
+    description: "Basic accessibility"
+    required_rules:
+      - "wcag_1_3_1_semantics_label"
+      - "wcag_2_1_1_keyboard"
+      - "wcag_2_4_3_focus_order"
+  level_aa:
+    name: "Level AA"
+    description: "Strong accessibility"
+    required_rules:
+      - "wcag_1_3_1_semantics_label"
+      - "wcag_1_4_3_contrast_minimum"
+      - "wcag_2_1_1_keyboard"
+      - "wcag_2_4_3_focus_order"
+  level_aaa:
+    name: "Level AAA"
+    description: "Enhanced accessibility"
+    required_rules:
+      - "wcag_1_3_1_semantics_label"
+      - "wcag_1_4_3_contrast_minimum"
+      - "wcag_2_1_1_keyboard"
+      - "wcag_2_4_3_focus_order"
+      - "wcag_2_5_5_target_size_enhanced"
+
+# Empty by default. Users extend via ethos.yaml in their project root.
+widget_aliases: {}
+
+meta:
+  authors:
+    - name: "gearscrafter"
+      role: "Creator"
+  maintenance_status: "Actively maintained"
+  next_version: "0.3.0"

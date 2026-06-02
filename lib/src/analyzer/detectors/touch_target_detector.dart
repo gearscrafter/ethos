@@ -5,32 +5,8 @@ import '../../models/coverage_report.dart';
 import '../ast/widget_visitor.dart';
 import '../rule_detector.dart';
 
-/// Detects WCAG 2.5.5 — Touch Target Size (Enhanced): interactive elements
-/// should be at least 48x48 logical pixels (Material Design guideline).
+/// Detects WCAG 2.5.5 — Touch Target Size.
 ///
-/// ## Strategy
-///
-/// Touch-target size, like contrast, is rarely declared on the interactive
-/// widget itself. So we measure what is verifiable:
-///
-/// 1. **Material widgets with guaranteed minimums** (`IconButton`,
-///    `FloatingActionButton`) → automatic PASS. Flutter enforces 48x48 for
-///    these regardless of content.
-///
-/// 2. **Custom interactive widgets** (`GestureDetector`, `InkWell`,
-///    `InkResponse`) sized by an enclosing `SizedBox(width:, height:)` or a
-///    `Container` with literal `width`/`height` → PASS if both >= 48, FAIL
-///    otherwise.
-///
-/// 3. Everything else (size from a variable, theme, intrinsic content, or
-///    `constraints`) → **indeterminate**.
-///
-/// ## A note on tapTargetSize
-///
-/// A Material button with `tapTargetSize: MaterialTapTargetSize.shrinkWrap`
-/// opts OUT of the 48x48 guarantee. When we see that literal on an
-/// otherwise auto-pass widget, we downgrade it to indeterminate (its real
-/// size now depends on content we can't measure).
 class TouchTargetDetector implements RuleDetector {
   static const double _minSize = 48.0;
 
@@ -39,7 +15,6 @@ class TouchTargetDetector implements RuleDetector {
     'FloatingActionButton',
   };
 
-  /// Custom interactive widgets with no intrinsic minimum size.
   static const _customInteractive = {
     'GestureDetector',
     'InkWell',
@@ -53,6 +28,7 @@ class TouchTargetDetector implements RuleDetector {
   DetectionResult analyze({
     required Rule rule,
     required List<ParsedFile> files,
+    Map<String, WidgetAlias> aliases = const {}, // ← added
   }) {
     int matched = 0;
     int total = 0;
@@ -61,10 +37,20 @@ class TouchTargetDetector implements RuleDetector {
 
     for (final file in files) {
       for (final widget in file.widgets) {
+
+        final alias = aliases[widget.type];
+        if (alias != null && alias.role == WidgetRole.button) {
+          if (alias.sizeGuaranteed) {
+            total++;
+            matched++;
+          } else {
+            indeterminate++;
+          }
+          continue;
+        }
+
         if (_autoPass.contains(widget.type)) {
           if (_hasShrinkWrapTapTarget(widget)) {
-            // Opted out of the 48x48 guarantee — size now depends on
-            // content we can't measure.
             indeterminate++;
             continue;
           }
@@ -88,7 +74,8 @@ class TouchTargetDetector implements RuleDetector {
                 widgetType: widget.type,
                 message:
                     '${widget.type} touch target is smaller than '
-                    '${_minSize.toStringAsFixed(0)}x${_minSize.toStringAsFixed(0)} '
+                    '${_minSize.toStringAsFixed(0)}x'
+                    '${_minSize.toStringAsFixed(0)} '
                     'logical pixels (WCAG 2.5.5).',
               ));
             case _SizeVerdict.unknown:
@@ -106,12 +93,12 @@ class TouchTargetDetector implements RuleDetector {
     );
   }
 
+  
   bool _hasShrinkWrapTapTarget(WidgetUsage widget) {
     final arg = widget.arg('tapTargetSize');
     if (arg == null) return false;
     return arg.toString().contains('shrinkWrap');
   }
-
 
   _SizeVerdict _resolveSize(WidgetUsage widget) {
     final ownW = _numArg(widget.arg('width'));
@@ -134,7 +121,6 @@ class TouchTargetDetector implements RuleDetector {
         : _SizeVerdict.fail;
   }
 
-  /// Walks up the AST for the nearest enclosing SizedBox or Container,
   AstNode? _findEnclosingSizer(AstNode node) {
     AstNode? current = node.parent;
     while (current != null) {
@@ -153,12 +139,8 @@ class TouchTargetDetector implements RuleDetector {
   }
 
   String? _ctorName(AstNode node) {
-    if (node is InstanceCreationExpression) {
-      return node.constructorName.type.name2.lexeme;
-    }
-    if (node is MethodInvocation && node.realTarget == null) {
-      return node.methodName.name;
-    }
+    if (node is InstanceCreationExpression) return node.constructorName.type.name2.lexeme;
+    if (node is MethodInvocation && node.realTarget == null) return node.methodName.name;
     return null;
   }
 
@@ -166,9 +148,7 @@ class TouchTargetDetector implements RuleDetector {
     final args = _argsOf(node);
     if (args == null) return null;
     for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == name) {
-        return arg.expression;
-      }
+      if (arg is NamedExpression && arg.name.label.name == name) return arg.expression;
     }
     return null;
   }

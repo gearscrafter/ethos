@@ -27,6 +27,7 @@ abstract class RuleDetector {
   DetectionResult analyze({
     required Rule rule,
     required List<ParsedFile> files,
+    Map<String, WidgetAlias> aliases = const {},
   });
 }
 

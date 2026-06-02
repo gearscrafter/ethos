@@ -1,0 +1,17 @@
+# Example ethos.yaml — OPTIONAL user config.
+#
+# Lives at your project root. Ethos auto-detects it.
+# Without this file, Ethos uses the built-in WCAG 2.2 spec as is.
+
+widget_aliases:
+  # The key is whatever YOUR widget is called. Below is just an example.
+  CircleIconBtn:
+    role: button             # button | text | input
+    label_arg: semanticLabel # which arg carries the accessible label
+    size_guaranteed: true    # already wraps a 48x48 target?
+    keyboard_ready: true     # keyboard-operable out of the box?
+
+# Optional: override thresholds without rewriting the spec.
+# rule_overrides:
+#   wcag_1_4_3_contrast_minimum:
+#     critical_threshold: 95

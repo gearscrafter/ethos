@@ -7,6 +7,7 @@ class Spec {
   final Map<String, Category> categories;
   final Map<String, Rule> rules;
   final Map<String, ComplianceLevel> complianceLevels;
+  final Map<String, WidgetAlias> widgetAliases;
 
   Spec({
     required this.version,
@@ -16,6 +17,7 @@ class Spec {
     required this.categories,
     required this.rules,
     required this.complianceLevels,
+    this.widgetAliases = const {},
   });
 
   /// Loads the spec from a YAML map
@@ -52,6 +54,18 @@ class Spec {
       });
     }
 
+    // Parse widget aliases (optional)
+    final widgetAliases = <String, WidgetAlias>{};
+    final aliasesYaml = yaml['widget_aliases'] as Map<String, dynamic>?;
+    if (aliasesYaml != null) {
+      aliasesYaml.forEach((key, value) {
+        widgetAliases[key.toString()] = WidgetAlias.fromYaml(
+          key.toString(),
+          value as Map<String, dynamic>,
+        );
+      });
+    }
+
     return Spec(
       version: specData['version'] as String,
       wcagVersion: specData['wcag_version'] as String,
@@ -60,12 +74,67 @@ class Spec {
       categories: categories,
       rules: rules,
       complianceLevels: complianceLevels,
+      widgetAliases: widgetAliases,
     );
   }
 
   @override
   String toString() =>
-      'Spec(v$version, WCAG $wcagVersion Level $wcagLevel, ${rules.length} rules)';
+      'Spec(v$version, WCAG $wcagVersion Level $wcagLevel, ${rules.length} rules, '
+      '${widgetAliases.length} aliases)';
+}
+
+class WidgetAlias {
+  final String name;
+  final WidgetRole role;
+  final String? labelArg;
+  final bool sizeGuaranteed;
+  final bool keyboardReady;
+
+  WidgetAlias({
+    required this.name,
+    required this.role,
+    this.labelArg,
+    this.sizeGuaranteed = false,
+    this.keyboardReady = false,
+  });
+
+  factory WidgetAlias.fromYaml(String name, Map<String, dynamic> yaml) {
+    return WidgetAlias(
+      name: name,
+      role: WidgetRole.fromString(yaml['role'] as String? ?? 'button'),
+      labelArg: yaml['label_arg'] as String?,
+      sizeGuaranteed: yaml['size_guaranteed'] as bool? ?? false,
+      keyboardReady: yaml['keyboard_ready'] as bool? ?? false,
+    );
+  }
+
+  @override
+  String toString() => 'WidgetAlias($name, role: ${role.name})';
+}
+
+/// How a custom widget should be treated by detectors.
+enum WidgetRole {
+  /// Interactive control — counts toward Semantic Labels, Keyboard, Touch.
+  button,
+
+  /// Text-bearing widget — counts toward Contrast.
+  text,
+
+  /// Focusable input — counts toward Focus Order.
+  input;
+
+  static WidgetRole fromString(String value) {
+    switch (value.toLowerCase()) {
+      case 'text':
+        return WidgetRole.text;
+      case 'input':
+        return WidgetRole.input;
+      case 'button':
+      default:
+        return WidgetRole.button;
+    }
+  }
 }
 
 /// Accessibility category (e.g., semantics, contrast, etc.)

@@ -16,494 +16,340 @@ Unlike tools that detect individual issues, Ethos calculates **coverage metrics*
 ✅ Compliance Level: AA
 
 📋 Coverage by Rule:
-  ✅ Semantic Labels: 85% (17/20)
-  ⚠️  Color Contrast: 60% (6/10) - CRITICAL
-  ✅ Touch Targets: 100% (12/12)
-  ✅ Keyboard Nav: 90% (9/10)
-  ✅ Focus Order: 95% (19/20)
+  ✅ Semantic Labels:  85% (17/20)
+  ⚠️  Color Contrast:  60% (6/10)  — CRITICAL
+  ✅ Touch Targets:   100% (12/12)
+  ✅ Keyboard Nav:     90% (9/10)
+  ✅ Focus Order:      95% (19/20)
+     ⓘ 6 indeterminate (color from theme — not counted)
 ```
 
 ## Features
 
-- ✅ **WCAG 2.2 Alignment**: Focuses on core accessibility metrics mapped to standard specs.
-- ✅ **Honest Static AST Analysis**: Powered by `package:analyzer`, parsing the real syntax tree instead of raw, unreliable regex pattern matching.
-- ✅ **The "Honesty" Architecture**: Explicitly tracks **Indeterminate** results (e.g., dynamic colors, size variables, inherited themes) so they do not pollute your pass/fail ratios with guesswork.
-- ✅ **Spec-Driven Design**: Decouples rules and criteria via YAML specifications loaded and validated dynamically.
-- ✅ **Pluggable Detector Registry**: Easily add, replace, or extend rules without modifying the core analysis pipeline.
-- ✅ **CLI Executable**: Ready for local terminal inspections and CI/CD integration.
-
----
-
-## Supported Architecture & Rules
-
-Ethos includes 5 built-in rules that walk your Flutter codebase using a robust `RecursiveAstVisitor`:
-
-### 1. Semantic Labels (`wcag_1_3_1_semantics`)
-Ensures custom interactive components have an accessible label.
-- **In-Scope (Denominator)**: Custom gesture widgets (`GestureDetector`, `InkWell`, `InkResponse`) that act as active targets. Excludes elements explicitly hidden via `excludeFromSemantics: true` or handling continuous drag/pan gestures.
-- **Pass (Numerator)**: Wrapped in a `Semantics` widget with a literal, non-empty `label`.
-- **Indeterminate**: Wrapped in `Semantics` but the label is a variable, string interpolation, or runtime method call.
-
-### 2. Minimum Color Contrast (`wcag_1_4_3_contrast`)
-Checks text legibility according to WCAG AA (4.5:1 / 3.0:1) parameters.
-- **In-Scope (Denominator)**: `Text` widgets where both text color and background color are declared inline as resolvable literals.
-- **Pass (Numerator)**: The calculated contrast ratio meets WCAG thresholds.
-- **Indeterminate**: Text colors from `Theme.of(context)`, custom global style variables (`$styles.text.body`), or when the background is inherited from a parent `Container`/`Scaffold`.
-
-### 3. Touch Target Size (`wcag_2_5_5_touch_target`)
-Verifies interactive element targets meet the standard $48 \times 48$ logical pixel minimum.
-- **Pass (Numerator)**: Material controls with built-in size guarantees (`IconButton`, `FloatingActionButton`), or custom gesture nodes explicitly sized via an enclosing `SizedBox` or `Container` with literal dimensions $\ge 48$.
-- **Indeterminate**: Size derived from runtime constraints, intrinsic dimensions, or custom button properties opting out of layout rules (`MaterialTapTargetSize.shrinkWrap`).
-
-### 4. Keyboard Accessibility (`wcag_2_1_1_keyboard`)
-Detects whether interactive workflows are accessible via external inputs.
-- **Denominator**: All interactive nodes.
-- **Pass (Numerator)**: Built-in Material buttons (`ElevatedButton`, `TextButton`, etc.) that handle focus natively, or custom tap targets properly wrapped in a `Focus` node / keyboard listener.
-- **Fail**: A raw `GestureDetector.onTap` completely missing alternative keyboard paths.
-
-### 5. Focus Order (`wcag_2_4_3_focus_order`)
-Ensures multi-input user flows manage the focus traversal sequence.
-- **Context**: Triggered by full `Form` scopes or layouts containing 2 or more focusable input nodes (`TextField`, `Checkbox`, etc.).
-- **Pass (Numerator)**: Layout declares explicit focus management mechanisms via `FocusNode`, `FocusScope`, `FocusTraversalGroup`, or `autofocus`.
+- ✅ **WCAG 2.2 alignment** — coverage metrics, not one-off issue lists.
+- ✅ **Honest AST analysis** with `package:analyzer` — no regex, no guessing.
+- ✅ **Indeterminate accounting** — values from themes or runtime variables are reported separately and never inflate pass/fail ratios.
+- ✅ **Built-in spec, zero setup** — the WCAG 2.2 rules ship inside the package. You don't copy any YAML file.
+- ✅ **Optional `ethos.yaml`** — teach Ethos about your own design-system widgets in five minutes.
+- ✅ **Pluggable detector registry** — add or replace rules without touching the core engine.
+- ✅ **CI/CD ready** — JSON, Markdown, and human-readable outputs; exits with code `1` on critical failures.
 
 ---
 
 ## Installation
 
-### As a library
+### As a CLI
 
-Add to your `pubspec.yaml`:
+```bash
+dart pub global activate ethos
+ethos -p ./my_flutter_app
+```
+
+### As a library
 
 ```yaml
 dependencies:
-  ethos: ^0.0.1
+  ethos: ^0.2.0
 ```
 
-### Local Development
+```dart
+import 'package:ethos/ethos.dart';
 
-For development, you can test the CLI directly:
+void main() async {
+  final analyzer = await CoverageAnalyzer.forProject('./my_flutter_app');
+  final report  = await analyzer.analyze();
+  print('Coverage:   ${report.overallCoverage}%');
+  print('Compliance: ${report.complianceLevel}');
+}
+```
+
+**You do not copy any spec file.** The built-in WCAG 2.2 spec lives inside the package.
+
+---
+
+## Quick start (local development)
 
 ```bash
 git clone https://github.com/gearscrafter/ethos.git
 cd ethos
 dart pub get
 
-# Run CLI directly
-dart run bin/analyze.dart -p ./lib
+# Run against the bundled fixtures
+dart run example/main.dart
 
-# Or install locally
-dart pub global activate --path .
-ethos -p ./lib
-```
+# Run against your own Flutter project
+dart run bin/analyze.dart -p ./my_flutter_app
 
-## Quick Start
-
-### Option 1: Global CLI Tool
-
-#### 1. Install globally
-
-```bash
-dart pub global activate ethos
-```
-
-#### 2. Analyze a Flutter Project
-
-```bash
+# Install locally as a global command
+dart pub global activate --source path .
 ethos -p ./my_flutter_app
 ```
 
-Output:
-```
-╔════════════════════════════════════════════════╗
-║  Accessibility Coverage Report                 ║
-║  Spec v1.0.0                                   ║
-╚════════════════════════════════════════════════╝
+---
 
-📊 Summary
-──────────────────────────────────────────────────
-Overall Coverage: 75.50%
-Compliance Level: AA
-Project: ./my_flutter_app
-Analyzed: 2026-04-01T12:34:56.789Z
+## Configuration (optional): `ethos.yaml`
 
-📋 Coverage by Rule
-──────────────────────────────────────────────────
-✅ Semantic Labels on Interactive Widgets
-   Coverage: 85.00% (17/20) [OK]
+Ethos works out of the box — the built-in spec already covers Flutter's standard widgets (`GestureDetector`, `InkWell`, `IconButton`, `TextField`, etc.).
 
-⚠️  Minimum Color Contrast
-   Coverage: 60.00% (6/10) [CRITICAL]
+Most real apps wrap controls in their own design-system components (`CircleIconBtn`, `AppButton`, whatever your team calls them). Ethos can't guess those names, so without config they appear as **indeterminate**. To fix that, drop an `ethos.yaml` next to your `pubspec.yaml`:
 
-✅ Touch Target Size (Enhanced)
-   Coverage: 100.00% (12/12) [OK]
+```yaml
+# ethos.yaml — OPTIONAL. Ethos auto-detects it, no flag needed.
 
-✅ Keyboard Accessibility
-   Coverage: 90.00% (9/10) [OK]
+widget_aliases:
+  # Key = the widget's class name exactly as written in your code.
+  CircleIconBtn:
+    role: button             # button | text | input
+    label_arg: semanticLabel # which arg carries the accessible label
+    size_guaranteed: true    # already wraps a >= 48×48 target internally?
+    keyboard_ready: true     # keyboard-operable out of the box?
 
-✅ Focus Order
-   Coverage: 95.00% (19/20) [OK]
+  AppButton:
+    role: button
+    label_arg: a11yLabel
+
+# Optional: tighten a threshold without rewriting the whole spec.
+# rule_overrides:
+#   wcag_1_4_3_contrast_minimum:
+#     critical_threshold: 95
 ```
 
-#### 3. Generate JSON Report
+What each field teaches:
 
-```bash
-ethos -p ./my_app -r json -o report.json
-```
+| Field             | Detector              | Effect                                              |
+|-------------------|-----------------------|-----------------------------------------------------|
+| `role: button`    | Semantic Labels, Keyboard, Touch Target | Widget counts as an interactive control. |
+| `label_arg`       | Semantic Labels       | Look for the semantic label in this argument.       |
+| `size_guaranteed` | Touch Target Size     | Auto-PASS — already ≥ 48×48 internally.             |
+| `keyboard_ready`  | Keyboard Accessibility| Auto-PASS — keyboard-operable out of the box.       |
 
-#### 4. Generate Markdown Report
+No `ethos.yaml`? Ethos still runs on the built-in spec. Custom widgets are simply ignored (shown as indeterminate). For a vanilla Flutter project that's already useful. For a project with a design system, the aliases make all the difference.
 
-```bash
-ethos -p ./my_app -r markdown -o report.md
-```
+---
 
-### Option 2: Use as Dart Library
+## Supported rules
 
-#### 1. Add to your project
+Five built-in rules, all backed by a `RecursiveAstVisitor` on real Dart AST.
 
-```bash
-dart pub add ethos
-```
+### 1. Semantic Labels — `wcag_1_3_1_semantics_label` (WCAG 1.3.1 · Level A)
 
-#### 2. Use in your code
+Custom interactive widgets must have an accessible label.
 
-```dart
-import 'package:ethos/ethos.dart';
-
-void main() async {
-  // Load analyzer with specs
-  final analyzer = await CoverageAnalyzer.loadFromFile(
-    'specs/v1.0.0/wcag_2_2.yaml'
-  );
-  
-  // Analyze project
-  final report = await analyzer.analyze(
-    projectPath: './my_flutter_app'
-  );
-  
-  // Use results
-  print('Coverage: ${report.overallCoverage}%');
-  print('Compliance: ${report.complianceLevel}');
-  
-  // Output JSON
-  print(report.toJsonString());
-}
-```
-
-#### 3. Or run with dart
-
-```bash
-dart run ethos -p ./my_app
-```
-
-## CLI Usage
-
-After installing globally with `dart pub global activate ethos`:
-
-```bash
-ethos [options]
-
-Options:
-  -p, --project-path      Path to Flutter project (required)
-  -s, --spec-version      Specification version (default: v1.0.0)
-  -r, --report-type       Format: json, human, markdown (default: human)
-  -o, --output            Output file path (optional)
-  -v, --verbose           Verbose output
-  -h, --help              Show help
-
-Examples:
-  # Basic analysis
-  ethos -p ./my_app
-
-  # JSON output to file
-  ethos -p ./my_app -r json -o report.json
-
-  # Markdown report
-  ethos -p ./my_app -r markdown -o report.md
-
-  # Verbose mode
-  ethos -p ./my_app -v
-
-  # Help
-  ethos -h
-```
-
-## WCAG 2.2 Rules
-
-### 1. Semantic Labels (WCAG 1.3.1)
-
-All interactive widgets must have semantic labels for screen readers.
+- **In scope:** `GestureDetector`, `InkWell`, `InkResponse` with tap-like gestures, plus any `role: button` alias from `ethos.yaml`.
+- **Pass:** wrapped in `Semantics(label: '<non-empty literal>')` as ancestor or descendant; or the alias `label_arg` is a non-empty literal.
+- **Indeterminate:** label is a variable, interpolation, or runtime call.
+- **Excluded automatically:** `excludeFromSemantics: true`, drag/pan-only gestures, `onTap: () {}` (block-parent), tap-to-dismiss patterns.
 
 ```dart
 // ✅ PASS
 Semantics(
-  label: 'Submit button',
-  child: GestureDetector(
-    onTap: () {},
-    child: Text('Submit')
-  )
+  label: 'Open profile',
+  child: GestureDetector(onTap: () {}, child: Icon(Icons.person)),
+)
+
+// ✅ PASS — descendant Semantics also works
+GestureDetector(
+  onTap: () => navigate(),
+  child: Semantics(label: 'Go to settings', child: Icon(Icons.settings)),
 )
 
 // ❌ FAIL
-GestureDetector(
-  onTap: () {},
-  child: Text('Submit')
-)
+GestureDetector(onTap: () => navigate(), child: Icon(Icons.settings))
 ```
 
-**Target Coverage:** 100%  
-**Critical Threshold:** 80%
+### 2. Minimum Color Contrast — `wcag_1_4_3_contrast_minimum` (WCAG 1.4.3 · Level AA)
 
-### 2. Color Contrast (WCAG 1.4.3)
+Text must have at least 4.5:1 contrast (3:1 for large text ≥ 18 pt) using the real WCAG luminance formula.
 
-Text must have sufficient color contrast (4.5:1 for normal text).
+- **In scope:** `Text` with inline `TextStyle(color:, backgroundColor:)` where both are literal (`Color(0x...)` or `Colors.*`).
+- **Indeterminate:** colors from `Theme.of(context)`, custom style variables, or a missing inline background (the common case in well-structured Flutter code).
 
 ```dart
-// ✅ PASS - Good contrast
-Text(
-  'Hello',
-  style: TextStyle(color: Colors.black87)
-)
+// ✅ PASS — ratio 21:1
+Text('Hello', style: TextStyle(color: Colors.black, backgroundColor: Colors.white))
 
-// ❌ FAIL - Low contrast
-Text(
-  'Hello',
-  style: TextStyle(color: Colors.grey)
-)
+// ❌ FAIL — ratio ~1.6:1
+Text('Hello', style: TextStyle(color: Color(0xFFCCCCCC), backgroundColor: Colors.white))
+
+// ⓘ INDETERMINATE — color from theme, cannot verify statically
+Text('Hello', style: theme.textTheme.bodyLarge)
 ```
 
-**Target Coverage:** 100%  
-**Critical Threshold:** 90%
+### 3. Touch Target Size — `wcag_2_5_5_target_size_enhanced` (WCAG 2.5.5 · Level AAA)
 
-### 3. Touch Target Size (WCAG 2.5.5)
+Interactive elements must be at least 48×48 logical pixels.
 
-Interactive elements must be at least 48x48 logical pixels (Material Design 3).
+- **Auto-pass:** `IconButton`, `FloatingActionButton` (Flutter guarantees 48×48); aliases with `size_guaranteed: true`.
+- **Verifiable:** custom interactive widget inside a `SizedBox` or `Container` with literal `width`/`height` — pass if both ≥ 48, fail otherwise.
+- **Indeterminate:** size from a variable, intrinsic content, or `tapTargetSize: shrinkWrap`.
+
+### 4. Keyboard Accessibility — `wcag_2_1_1_keyboard` (WCAG 2.1.1 · Level A)
+
+All interactive functionality must be reachable by keyboard.
+
+- **Pass:** Material controls (`ElevatedButton`, `TextField`, `InkWell`, etc.); `GestureDetector` under a `Focus`, `FocusScope`, `Shortcuts`, or `KeyboardListener` ancestor; aliases with `keyboard_ready: true`.
+- **Fail:** `GestureDetector.onTap` with no keyboard path in its ancestor chain.
+
+### 5. Focus Order — `wcag_2_4_3_focus_order` (WCAG 2.4.3 · Level A)
+
+Multi-input layouts must declare explicit focus management.
+
+- **In scope:** `Form` widgets, or any layout with 2+ focusable inputs (`TextField`, `Checkbox`, `Radio`, etc.).
+- **Pass:** declares `FocusNode`, `FocusScope`, `FocusTraversalGroup`, or `autofocus: true`.
+
+---
+
+## CLI reference
+
+```
+ethos -p <project-path> [options]
+
+Options:
+  -p, --project-path   Path to the Flutter project to analyze (required)
+  -c, --config         Path to a custom ethos.yaml (default: auto-detect)
+  -r, --report-type    Output format: human | json | markdown | coverage
+                       (default: human)
+  -o, --output         Write report to this file instead of stdout
+  -v, --verbose        Show progress details (written to stderr)
+  -h, --help           Show this help
+
+Examples:
+  ethos -p ./my_app
+  ethos -p ./my_app -c path/to/ethos.yaml
+  ethos -p ./my_app -r json -o report.json
+  ethos -p ./my_app -r markdown -o report.md
+  ethos -p ./my_app -v
+```
+
+Verbose logs go to **stderr** so `ethos -p . -r json | jq` works cleanly.
+Exit code `1` when any rule is below its critical threshold — useful as a CI gate.
+
+---
+
+## Compliance levels
+
+| Level | Minimum coverage | Description                           |
+|-------|-----------------|---------------------------------------|
+| AAA   | ≥ 95%           | Enhanced accessibility                |
+| AA    | ≥ 85%           | Strong accessibility (typical target) |
+| A     | ≥ 70%           | Basic accessibility                   |
+| NONE  | < 70%           | Does not meet minimum standards       |
+
+---
+
+## Library API reference
 
 ```dart
-// ✅ PASS - Material button (auto 48x48)
-ElevatedButton(
-  onPressed: () {},
-  child: Text('Click')
-)
+// Standard entry point
+final analyzer = await CoverageAnalyzer.forProject('./my_app');
 
-// ✅ PASS - Custom size
-SizedBox(
-  width: 48,
-  height: 48,
-  child: GestureDetector(onTap: () {})
-)
+// With explicit config file
+final analyzer = await CoverageAnalyzer.forProject(
+  './my_app',
+  configPath: 'path/to/ethos.yaml',
+);
 
-// ❌ FAIL - Too small
-GestureDetector(
-  onTap: () {},
-  child: SizedBox(width: 32, height: 32)
-)
+// Run analysis
+final report = await analyzer.analyze();
+
+// Output options
+print(report.overallCoverage);          // double 0–100
+print(report.complianceLevel);          // 'A' | 'AA' | 'AAA' | 'NONE'
+print(report.toJsonString());           // JSON for CI pipelines
 ```
 
-**Target Coverage:** 100%  
-**Critical Threshold:** 90%
+Advanced: `CoverageAnalyzer.loadFromFile(specPath, projectPath: ...)` and `.fromString(yaml, projectPath: ...)` load a fully custom spec instead of the built-in.
 
-### 4. Keyboard Navigation (WCAG 2.1.1)
-
-All functionality must be operable via keyboard.
-
-```dart
-// ✅ PASS - Built-in keyboard support
-ElevatedButton(
-  onPressed: () {},
-  child: Text('Submit')
-)
-
-// ❌ FAIL - No keyboard support
-GestureDetector(
-  onTap: () {},
-  child: Container()
-)
-```
-
-**Target Coverage:** 100%  
-**Critical Threshold:** 95%
-
-### 5. Focus Order (WCAG 2.4.3)
-
-Focus must be visible and managed logically.
-
-```dart
-// ✅ PASS - Logical focus order
-Form(
-  child: Column(
-    children: [
-      TextField(autofocus: true),
-      TextField(),
-      ElevatedButton(onPressed: () {})
-    ]
-  )
-)
-```
-
-**Target Coverage:** 95%  
-**Critical Threshold:** 80%
-
-## Compliance Levels
-
-| Level | Coverage | Description |
-|-------|----------|-------------|
-| **AAA** | ≥ 95% | Enhanced accessibility |
-| **AA** | ≥ 85% | Strong accessibility (most organizations target this) |
-| **A** | ≥ 70% | Basic accessibility |
-| **NONE** | < 70% | Does not meet minimum standards |
-
-## Specifications
-
-Rules are defined in `specs/v1.0.0/wcag_2_2.yaml`:
-
-```yaml
-spec:
-  version: "1.0.0"
-  wcag_version: "2.2"
-  wcag_level: "AA"
-
-rules:
-  - rule_id: "wcag_1_3_1_semantics_label"
-    title: "Semantic Labels on Interactive Widgets"
-    coverage_metric:
-      target: 100
-      critical_threshold: 80
-    test_cases:
-      - name: "GestureDetector with Semantics"
-        expected_result: "PASS"
-      - name: "GestureDetector without Semantics"
-        expected_result: "FAIL"
-```
-
-## Testing
-
-```bash
-# Run all tests
-dart test
-
-# Run specific test file
-dart test test/spec_compliance_test.dart -v
-
-# Run single test
-dart test -n "Spec loads successfully"
-
-# With coverage
-dart test --coverage=coverage
-```
+---
 
 ## Architecture
 
 ```
 ethos/
+├── bin/
+│   └── analyze.dart              # CLI entry point
 ├── lib/
-│   ├── ethos.dart                    # Main exports
+│   ├── ethos.dart                # Public barrel export
 │   └── src/
 │       ├── models/
-│       │   ├── spec.dart             # Specification models
-│       │   └── coverage_report.dart  # Report models
+│       │   ├── spec.dart         # Spec, Rule, WidgetAlias, WidgetRole
+│       │   ├── ethos_config.dart # User ethos.yaml model + RuleOverride
+│       │   └── coverage_report.dart  # CoverageReport, RuleCoverage, Finding
+│       ├── specs/v1/
+│       │   ├── wcag_2_2.yaml         # Source spec — edit this
+│       │   └── wcag_2_2_embedded.dart # Generated constant — do not edit
 │       └── analyzer/
-│           ├── spec_loader.dart      # YAML loader
-│           └── coverage_analyzer.dart # Analysis engine
-├── bin/
-│   └── analyze.dart                  # CLI tool
-├── specs/v1.0.0/
-│   └── wcag_2_2.yaml                # WCAG 2.2 specs
+│           ├── coverage_analyzer.dart # Engine (forProject / analyze)
+│           ├── spec_loader.dart       # Built-in + ethos.yaml merge
+│           ├── detector_registry.dart
+│           ├── rule_detector.dart     # RuleDetector interface
+│           ├── ast/widget_visitor.dart
+│           ├── utils/color_resolver.dart
+│           └── detectors/
+│               ├── semantic_labels_detector.dart
+│               ├── contrast_detector.dart
+│               ├── touch_target_detector.dart
+│               ├── keyboard_detector.dart
+│               └── focus_order_detector.dart
 ├── example/
-│   └── main.dart                     # Usage examples
-└── test/
-    └── spec_compliance_test.dart    # Tests
+│   ├── main.dart
+│   └── fixtures/
+│       ├── ethos.yaml            # Sample widget aliases
+│       └── lib/                  # Sample Dart files (analysis input)
+├── test/
+│   ├── spec_compliance_test.dart
+│   ├── semantic_labels_detector_test.dart
+│   ├── contrast_detector_test.dart
+│   ├── touch_target_detector_test.dart
+│   ├── keyboard_detector_test.dart
+│   └── focus_order_detector_test.dart
+└── tool/
+    └── embed_spec.dart           # Regenerates wcag_2_2_embedded.dart
 ```
 
-## Extending with New Rules
+If you edit the built-in spec (`lib/src/specs/v1/wcag_2_2.yaml`), regenerate the embedded constant:
 
-Add a rule to `specs/v1.0.0/wcag_2_2.yaml`:
-
-```yaml
-rules:
-  - rule_id: "wcag_3_2_1_on_focus"
-    category: "predictability"
-    severity: "high"
-    wcag_criterion: "3.2.1"
-    wcag_level: "A"
-    title: "On Focus"
-    description: "Components must not cause unexpected context changes on focus"
-    
-    coverage_metric:
-      id: "on_focus_coverage"
-      formula: "(compliant_components / total_components) * 100"
-      target: 100
-      critical_threshold: 90
-    
-    test_cases:
-      - name: "Focus without unexpected change"
-        expected_result: "PASS"
-      - name: "Focus causes navigation"
-        expected_result: "FAIL"
-    
-    how_to_fix: "Avoid triggering actions on focus events"
-    references:
-      wcag: "https://www.w3.org/WAI/WCAG21/Understanding/on-focus"
+```bash
+dart run tool/embed_spec.dart
 ```
-
-Then implement detection in `lib/src/analyzer/coverage_analyzer.dart`:
-
-```dart
-(int matched, int total) _analyzeOnFocus(String code) {
-  // Your analysis implementation
-  return (matched, total);
-}
-```
-
-## Limitations (MVP)
-
-- Pattern matching via regex (not full AST parsing)
-- No runtime analysis (static code analysis only)
-- Limited widget pattern detection
-- No actual color contrast calculation (pattern-based only)
-
-## Roadmap
-
-### v0.2.0
-- Improved AST parsing using `analyzer` package
-- Real color contrast calculation
-- Precise touch target size measurement
-- Runtime overlay widget
-
-
-## Contributing
-
-Contributions welcome! Areas for improvement:
-
-- Better Dart AST parsing
-- More comprehensive rule implementations
-- Additional WCAG 2.2 rules
-- Performance optimizations
-- CI/CD integration examples
-- Language translations
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file
-
-## Author
-
-[@gearscrafter](https://github.com/gearscrafter)
-Mobile Developer
-
-## Resources
-
-- [WCAG 2.2 Guidelines](https://www.w3.org/WAI/WCAG22/quickref/)
-- [Flutter Accessibility](https://docs.flutter.dev/ui/accessibility)
-- [Material Design 3](https://m3.material.io/)
-- [WebAIM Contrast Checker](https://webaim.org/resources/contrastchecker/)
-
-
-## Support
-
-Found a bug? Have a feature request?
-
-Open an issue on [GitHub](https://github.com/gearscrafter/ethos/issues)
 
 ---
 
-**Made with ❤️ for inclusive Flutter apps**
+## Roadmap
+
+### v0.3.0
+- Widget alias inheritance — alias a widget once and have child widgets inherit its traits.
+- Cross-method/cross-file resolution so a `Semantics` wrapper in a parent widget is connected to a custom button in a child.
+- More built-in detectors: text scaling, alternative text on images, animation preferences.
+- Configurable rule subset — run only the rules you care about.
+
+---
+
+## Contributing
+
+Contributions are welcome. High-value areas:
+
+- Additional WCAG 2.2 detectors.
+- Improved theme/`$styles` resolution for the contrast rule.
+- CI/CD integration examples (GitHub Actions, GitLab CI).
+
+---
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).
+
+## Author
+
+[@gearscrafter](https://github.com/gearscrafter) — Mobile Developer.
+
+## Resources
+
+- [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/)
+- [Flutter Accessibility Docs](https://docs.flutter.dev/ui/accessibility)
+- [Material Design 3 — Accessibility](https://m3.material.io/foundations/accessible-design/overview)
+- [WebAIM Contrast Checker](https://webaim.org/resources/contrastchecker/)
+
+---
+
+**Made with ❤️ for inclusive Flutter apps.**

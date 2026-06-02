@@ -20,6 +20,7 @@ library ethos;
 // Models
 export 'src/models/spec.dart';
 export 'src/models/coverage_report.dart';
+export 'src/models/ethos_config.dart';
 
 // Analyzer
 export 'src/analyzer/coverage_analyzer.dart';

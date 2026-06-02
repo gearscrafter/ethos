@@ -8,48 +8,75 @@ import 'spec_loader.dart';
 
 /// Main analyzer engine. Calculates accessibility coverage for a Flutter
 /// project by parsing every Dart file once with `package:analyzer` and
-/// dispatching each rule to its registered [RuleDetector].
+/// dispatching each rule to its registered detector.
 ///
-/// The engine itself contains no rule-specific logic: adding, removing, or
-/// modifying a detector does not touch this class.
+/// ## Recommended entry point
+///
+/// ```dart
+/// final analyzer = await CoverageAnalyzer.forProject('./my_flutter_app');
+/// final report = await analyzer.analyze();
+/// ```
+///
+/// This uses the built-in WCAG 2.2 spec packaged with Ethos and
+/// automatically merges any `ethos.yaml` found in the project root. The user
+/// never copies the WCAG spec.
 class CoverageAnalyzer {
   final Spec spec;
   final DetectorRegistry registry;
+  final String projectPath;
 
-  CoverageAnalyzer({required this.spec, DetectorRegistry? registry})
-      : registry = registry ?? DetectorRegistry.withBuiltIns();
+  CoverageAnalyzer({
+    required this.spec,
+    required this.projectPath,
+    DetectorRegistry? registry,
+  }) : registry = registry ?? DetectorRegistry.withBuiltIns();
+
+  static Future<CoverageAnalyzer> forProject(
+    String projectPath, {
+    String? configPath,
+    DetectorRegistry? registry,
+  }) async {
+    final spec = await SpecLoader.load(
+      projectPath: projectPath,
+      configPath: configPath,
+    );
+    return CoverageAnalyzer(
+      spec: spec,
+      projectPath: projectPath,
+      registry: registry,
+    );
+  }
 
   static Future<CoverageAnalyzer> loadFromFile(
     String specPath, {
+    required String projectPath,
     DetectorRegistry? registry,
   }) async {
     final spec = await SpecLoader.loadFromFile(specPath);
     SpecLoader.validate(spec);
-    return CoverageAnalyzer(spec: spec, registry: registry);
+    return CoverageAnalyzer(
+      spec: spec,
+      projectPath: projectPath,
+      registry: registry,
+    );
   }
 
   static CoverageAnalyzer fromString(
     String yamlContent, {
+    required String projectPath,
     DetectorRegistry? registry,
   }) {
     final spec = SpecLoader.loadFromString(yamlContent);
     SpecLoader.validate(spec);
-    return CoverageAnalyzer(spec: spec, registry: registry);
+    return CoverageAnalyzer(
+      spec: spec,
+      projectPath: projectPath,
+      registry: registry,
+    );
   }
-
-  /// Analyzes a Flutter project against the loaded spec.
-  ///
-  /// Pipeline:
-  ///   1. Discover Dart files (skipping generated / .g.dart / build dirs).
-  ///   2. Parse each file once into a [ParsedFile] (AST + widget list).
-  ///   3. For each rule in the spec, look up its detector and run it.
-  ///   4. Aggregate into a [CoverageReport].
-  Future<CoverageReport> analyze({
-    required String projectPath,
-    String? specVersion,
-  }) async {
+  Future<CoverageReport> analyze() async {
     final report = CoverageReport(
-      specVersion: specVersion ?? spec.version,
+      specVersion: spec.version,
       projectPath: projectPath,
       timestamp: DateTime.now(),
       coverage: {},
@@ -58,7 +85,6 @@ class CoverageAnalyzer {
 
     try {
       final dartFiles = await _findDartFiles(projectPath);
-
       if (dartFiles.isEmpty) {
         report.issues.add('No Dart files found in $projectPath');
         report.calculateOverall();
@@ -66,7 +92,6 @@ class CoverageAnalyzer {
         return report;
       }
 
-      // Parse all files once — every detector reuses the same AST.
       final parsedFiles = <ParsedFile>[];
       for (final file in dartFiles) {
         try {
@@ -77,7 +102,6 @@ class CoverageAnalyzer {
         }
       }
 
-      // Run each rule's detector.
       for (final rule in spec.rules.values) {
         final detector = registry.find(rule.ruleId);
         if (detector == null) {
@@ -94,7 +118,11 @@ class CoverageAnalyzer {
           continue;
         }
 
-        final result = detector.analyze(rule: rule, files: parsedFiles);
+        final result = detector.analyze(
+          rule: rule,
+          files: parsedFiles,
+          aliases: spec.widgetAliases,
+        );
         report.coverage[rule.ruleId] = RuleCoverage.calculate(
           ruleId: rule.ruleId,
           title: rule.title,
@@ -117,34 +145,26 @@ class CoverageAnalyzer {
     }
   }
 
-  /// Walks [projectPath] recursively, returning every `.dart` file that
-  /// looks like project source. Generated files, build outputs, and the
-  /// pub cache are excluded.
-  Future<List<File>> _findDartFiles(String projectPath) async {
-    final dir = Directory(projectPath);
+  Future<List<File>> _findDartFiles(String root) async {
+    final dir = Directory(root);
     final dartFiles = <File>[];
-
     if (!await dir.exists()) return dartFiles;
-
+    final sep = Platform.pathSeparator;
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
       if (entity is! File) continue;
       final path = entity.path;
       if (!path.endsWith('.dart')) continue;
-
-      // Skip generated / build / pub cache.
       if (path.endsWith('.g.dart') ||
           path.endsWith('.freezed.dart') ||
           path.endsWith('.gr.dart') ||
-          path.contains('${Platform.pathSeparator}generated${Platform.pathSeparator}') ||
-          path.contains('${Platform.pathSeparator}.dart_tool${Platform.pathSeparator}') ||
-          path.contains('${Platform.pathSeparator}build${Platform.pathSeparator}') ||
-          path.contains('${Platform.pathSeparator}.pub-cache${Platform.pathSeparator}')) {
+          path.contains('${sep}generated$sep') ||
+          path.contains('$sep.dart_tool$sep') ||
+          path.contains('${sep}build$sep') ||
+          path.contains('$sep.pub-cache$sep')) {
         continue;
       }
-
       dartFiles.add(entity);
     }
-
     return dartFiles;
   }
 }

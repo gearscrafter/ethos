@@ -1,3 +1,12 @@
+# 0.2.0
+
+- Built-in WCAG 2.2 specification with automatic project configuration via `ethos.yaml`; no external spec files required.
+
+- Extensible design-system support through `widget_aliases` and per-rule customization through `rule_overrides`, allowing custom widgets to participate in accessibility analysis.
+
+- Improved analysis accuracy with alias-aware detectors, precise source-level findings, explicit `Indeterminate` tracking, and better support for modern Dart syntax and widget detection patterns.
+
+
 ## 0.1.0
 
 - Pure static analysis (AST) using `package:analyzer` and `RecursiveAstVisitor` to map Flutter widgets without runtime analysis.
