@@ -1,3 +1,8 @@
+## 0.8.2
+ 
+- **`-p` is now optional** — all three subcommands default to the current
+  working directory when `--project-path` is omitte.
+
 ## 0.8.1
 
 - Fixed `_ResolvedWidgetVisitor` in `deep_analyzer.dart` to match the fixes

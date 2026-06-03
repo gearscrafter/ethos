@@ -26,16 +26,19 @@ void main(List<String> arguments) async {
 Future<void> _runAnalyze(List<String> arguments) async {
   final parser = ArgParser()
     ..addOption('project-path',
-        abbr: 'p', help: 'Path to Flutter project to analyze', mandatory: true)
+        abbr: 'p',
+        help: 'Path to Flutter project to analyze (default: current directory)')
     ..addOption('config',
-        abbr: 'c', help: 'Path to an ethos.yaml (default: auto-detect).')
+        abbr: 'c',
+        help: 'Path to an ethos.yaml (default: auto-detect).')
     ..addOption('report-type',
         abbr: 'r',
         help: 'Output format: human | json | markdown | coverage',
         defaultsTo: 'human',
         allowed: ['json', 'human', 'markdown', 'coverage'])
     ..addOption('output',
-        abbr: 'o', help: 'Write report to this file instead of stdout')
+        abbr: 'o',
+        help: 'Write report to this file instead of stdout')
     ..addFlag('deep',
         abbr: 'd',
         help: 'Deep analysis: resolves types and cross-file references.\n'
@@ -43,24 +46,20 @@ Future<void> _runAnalyze(List<String> arguments) async {
             'Falls back to standard mode automatically if the project is not ready.',
         defaultsTo: false)
     ..addFlag('verbose',
-        abbr: 'v',
-        help: 'Print progress details (written to stderr)',
+        abbr: 'v', help: 'Print progress details (written to stderr)',
         defaultsTo: false)
     ..addFlag('help', abbr: 'h', help: 'Show help message', negatable: false);
 
   try {
     final results = parser.parse(arguments);
-    if (results['help'] as bool) {
-      _printAnalyzeHelp(parser);
-      exit(0);
-    }
+    if (results['help'] as bool) { _printAnalyzeHelp(parser); exit(0); }
 
-    final projectPath = results['project-path'] as String;
-    final configPath = results['config'] as String?;
-    final reportType = results['report-type'] as String;
-    final outputPath = results['output'] as String?;
-    final deepMode = results['deep'] as bool;
-    final verbose = results['verbose'] as bool;
+    final projectPath = (results['project-path'] as String?) ?? Directory.current.path;
+    final configPath  = results['config'] as String?;
+    final reportType  = results['report-type'] as String;
+    final outputPath  = results['output'] as String?;
+    final deepMode    = results['deep'] as bool;
+    final verbose     = results['verbose'] as bool;
 
     if (verbose) {
       stderr.writeln('📋 Ethos — Accessibility Coverage Analyzer');
@@ -81,12 +80,11 @@ Future<void> _runAnalyze(List<String> arguments) async {
 
     if (deepMode) {
       final deepAnalyzer = await DeepAnalyzer.forProject(
-        projectPath,
-        configPath: configPath,
+        projectPath, configPath: configPath,
       );
 
       if (verbose) {
-        stderr.writeln('Spec v${deepAnalyzer.spec.version} '
+        stderr.writeln(' Spec v${deepAnalyzer.spec.version} '
             '(${deepAnalyzer.spec.rules.length} rules, '
             '${deepAnalyzer.spec.widgetAliases.length} aliases)');
       }
@@ -110,24 +108,15 @@ Future<void> _runAnalyze(List<String> arguments) async {
               inProgressLine = true;
             }
           case AnalysisRunningDetector(:final ruleTitle):
-            if (inProgressLine) {
-              stderr.writeln('');
-              inProgressLine = false;
-            }
+            if (inProgressLine) { stderr.writeln(''); inProgressLine = false; }
             stderr.writeln('   ✓ $ruleTitle');
           case AnalysisWarning(:final message):
-            if (inProgressLine) {
-              stderr.writeln('');
-              inProgressLine = false;
-            }
+            if (inProgressLine) { stderr.writeln(''); inProgressLine = false; }
             stderr.writeln('⚠️  $message');
           case AnalysisComplete():
             final completedReport = (event).report;
             final usedDeep = (event).usedDeepMode;
-            if (inProgressLine) {
-              stderr.writeln('');
-              inProgressLine = false;
-            }
+            if (inProgressLine) { stderr.writeln(''); inProgressLine = false; }
             stderr.writeln(usedDeep
                 ? '✅ Deep analysis complete'
                 : '✅ Analysis complete (fell back to standard mode)');
@@ -137,19 +126,18 @@ Future<void> _runAnalyze(List<String> arguments) async {
       }
 
       if (reportHolder == null) {
-        stderr.writeln(' Deep analysis did not complete.');
+        stderr.writeln('❌ Deep analysis did not complete.');
         exit(1);
       }
-      report = reportHolder;
+      report = reportHolder!;
     } else {
       late final CoverageAnalyzer analyzer;
       try {
         analyzer = await CoverageAnalyzer.forProject(
-          projectPath,
-          configPath: configPath,
+          projectPath, configPath: configPath,
         );
       } catch (e) {
-        stderr.writeln(' Error loading spec: $e');
+        stderr.writeln('❌ Error loading spec: $e');
         exit(1);
       }
 
@@ -173,14 +161,10 @@ Future<void> _runAnalyze(List<String> arguments) async {
 
     String reportOutput;
     switch (reportType) {
-      case 'json':
-        reportOutput = report.toJsonString();
-      case 'markdown':
-        reportOutput = _generateMarkdownReport(report);
-      case 'coverage':
-        reportOutput = _generateCoverageReport(report);
-      default:
-        reportOutput = _generateHumanReport(report);
+      case 'json':     reportOutput = report.toJsonString();
+      case 'markdown': reportOutput = _generateMarkdownReport(report);
+      case 'coverage': reportOutput = _generateCoverageReport(report);
+      default:         reportOutput = _generateHumanReport(report);
     }
 
     if (outputPath != null) {
@@ -192,9 +176,7 @@ Future<void> _runAnalyze(List<String> arguments) async {
 
     final hasCritical = report.coverage.values.any((c) => c.isCritical);
     if (hasCritical) {
-      if (verbose) {
-        stderr.writeln('\n  Critical coverage issues detected');
-      }
+      if (verbose) { stderr.writeln('\n  Critical coverage issues detected'); }
       exit(1);
     }
     exit(0);
@@ -211,7 +193,8 @@ Future<void> _runAnalyze(List<String> arguments) async {
 Future<void> _runInit(List<String> arguments) async {
   final parser = ArgParser()
     ..addOption('project-path',
-        abbr: 'p', help: 'Path to Flutter project to scan', mandatory: true)
+        abbr: 'p',
+        help: 'Path to Flutter project to scan (default: current directory)')
     ..addOption('output',
         abbr: 'o',
         help: 'Output path for the generated ethos.yaml.\n'
@@ -220,41 +203,33 @@ Future<void> _runInit(List<String> arguments) async {
 
   try {
     final results = parser.parse(arguments);
-    if (results['help'] as bool) {
-      _printInitHelp(parser);
-      exit(0);
-    }
+    if (results['help'] as bool) { _printInitHelp(parser); exit(0); }
 
-    final projectPath = results['project-path'] as String;
+    final projectPath = (results['project-path'] as String?) ?? Directory.current.path;
     final sep = Platform.pathSeparator;
-    final outputPath =
-        results['output'] as String? ?? '$projectPath${sep}ethos.yaml';
+    final outputPath = results['output'] as String? ??
+        '$projectPath${sep}ethos.yaml';
 
     print('🔍 Scanning $projectPath for custom widgets and color tokens...');
 
+    // ── Scan project ──────────────────────────────────────────────────
     final dir = Directory(projectPath);
     if (!await dir.exists()) {
-      stderr.writeln(' Project path not found: $projectPath');
+      stderr.writeln('❌ Project path not found: $projectPath');
       exit(1);
     }
 
     final files = <ParsedFile>[];
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      if (entity is! File) {
-        continue;
-      }
+      if (entity is! File) { continue; }
       final path = entity.path;
-      if (!path.endsWith('.dart')) {
-        continue;
-      }
+      if (!path.endsWith('.dart')) { continue; }
       if (path.endsWith('.g.dart') ||
           path.endsWith('.freezed.dart') ||
           path.endsWith('.gr.dart') ||
           path.contains('${sep}generated$sep') ||
           path.contains('$sep.dart_tool$sep') ||
-          path.contains('${sep}build$sep')) {
-        continue;
-      }
+          path.contains('${sep}build$sep')) { continue; }
       try {
         final source = await entity.readAsString();
         files.add(parseDartFile(path, source));
@@ -280,7 +255,8 @@ Future<void> _runInit(List<String> arguments) async {
 
     final outputFile = File(outputPath);
     if (await outputFile.exists()) {
-      stdout.write('⚠️  $outputPath already exists. Overwrite? [y/N] ');
+      stdout.write(
+          '⚠️  $outputPath already exists. Overwrite? [y/N] ');
       final response = stdin.readLineSync()?.trim().toLowerCase() ?? '';
       if (response != 'y' && response != 'yes') {
         print('Cancelled. Existing ethos.yaml was not modified.');
@@ -295,7 +271,7 @@ Future<void> _runInit(List<String> arguments) async {
 
     await outputFile.writeAsString(yaml);
 
-    print(' Generated: $outputPath');
+    print('✅ Generated: $outputPath');
     print('');
 
     if (result.totalWidgets > 0) {
@@ -317,8 +293,7 @@ Future<void> _runInit(List<String> arguments) async {
     print('Next steps:');
     print('  1. Open $outputPath');
     print('  2. Set role: for each widget_alias');
-    print(
-        '  3. Uncomment label_arg, size_guaranteed, keyboard_ready as needed');
+    print('  3. Uncomment label_arg, size_guaranteed, keyboard_ready as needed');
     print('  4. Fill in hex values under color_aliases');
     print('  5. Run: ethos -p $projectPath -v');
   } on FormatException catch (e) {
@@ -331,19 +306,21 @@ Future<void> _runInit(List<String> arguments) async {
   }
 }
 
+
 String _progressBar(int current, int total) {
   const width = 15;
   final filled = (current / total * width).round();
   return '[${'█' * filled}${'░' * (width - filled)}]';
 }
 
-const _reset = '\x1B[0m';
-const _bold = '\x1B[1m';
-const _red = '\x1B[31m';
-const _green = '\x1B[32m';
+
+const _reset  = '\x1B[0m';
+const _bold   = '\x1B[1m';
+const _red    = '\x1B[31m';
+const _green  = '\x1B[32m';
 const _yellow = '\x1B[33m';
-const _cyan = '\x1B[36m';
-const _dim = '\x1B[2m';
+const _cyan   = '\x1B[36m';
+const _dim    = '\x1B[2m';
 
 String _c(String text, String color) => '$color$text$_reset';
 String _b(String text) => '$_bold$text$_reset';
@@ -358,12 +335,12 @@ String _generateHumanReport(CoverageReport report) {
 
   final header = color
       ? '$_bold$_cyan╔════════════════════════════════════════════════╗$_reset\n'
-          '$_bold$_cyan║  Accessibility Coverage Report                 ║$_reset\n'
-          '$_bold$_cyan║  Spec v${report.specVersion}${''.padRight(41 - report.specVersion.length)}║$_reset'
-          '\n$_bold$_cyan╚════════════════════════════════════════════════╝$_reset'
+        '$_bold$_cyan║  Accessibility Coverage Report                 ║$_reset\n'
+        '$_bold$_cyan║  Spec v${report.specVersion}${''.padRight(41 - report.specVersion.length)}║$_reset'
+        '\n$_bold$_cyan╚════════════════════════════════════════════════╝$_reset'
       : '${'╔════════════════════════════════════════════════╗\n'
-          '║  Accessibility Coverage Report                 ║\n'
-          '║  Spec v${report.specVersion}'.padRight(49)}║\n╚════════════════════════════════════════════════╝';
+        '║  Accessibility Coverage Report                 ║\n'
+        '║  Spec v${report.specVersion}'.padRight(49)}║\n╚════════════════════════════════════════════════╝';
   buffer.writeln(header);
   buffer.writeln('');
 
@@ -373,11 +350,7 @@ String _generateHumanReport(CoverageReport report) {
   final pct = report.overallCoverage;
   final pctStr = '${pct.toStringAsFixed(2)}%';
   final pctColored = color
-      ? (pct >= 85
-          ? _c(pctStr, _green)
-          : pct >= 70
-              ? _c(pctStr, _yellow)
-              : _c(pctStr, _red))
+      ? (pct >= 85 ? _c(pctStr, _green) : pct >= 70 ? _c(pctStr, _yellow) : _c(pctStr, _red))
       : pctStr;
 
   final level = report.complianceLevel;
@@ -390,8 +363,7 @@ String _generateHumanReport(CoverageReport report) {
   buffer.writeln('Overall Coverage: $pctColored');
   buffer.writeln('Compliance Level: ${color ? _b(levelColored) : level}');
   buffer.writeln('Project: ${report.projectPath}');
-  buffer.writeln(
-      'Analyzed: ${color ? _c(report.timestamp.toIso8601String(), _dim) : report.timestamp.toIso8601String()}');
+  buffer.writeln('Analyzed: ${color ? _c(report.timestamp.toIso8601String(), _dim) : report.timestamp.toIso8601String()}');
   buffer.writeln('');
 
   buffer.writeln(color ? _b('📋 Coverage by Rule') : '📋 Coverage by Rule');
@@ -405,27 +377,17 @@ String _generateHumanReport(CoverageReport report) {
     final status = isCritical ? 'CRITICAL' : (noData ? 'NO DATA' : 'OK');
 
     final titleStr = color
-        ? (isCritical
-            ? _c(c.title, _red)
-            : noData
-                ? _c(c.title, _cyan)
-                : _c(c.title, _green))
+        ? (isCritical ? _c(c.title, _red) : noData ? _c(c.title, _cyan) : _c(c.title, _green))
         : c.title;
     final statusStr = color
-        ? (isCritical
-            ? _c('[$status]', _red)
-            : noData
-                ? _c('[$status]', _cyan)
-                : _c('[$status]', _green))
+        ? (isCritical ? _c('[$status]', _red) : noData ? _c('[$status]', _cyan) : _c('[$status]', _green))
         : '[$status]';
-    final pctRuleStr =
-        '${c.percentage.toStringAsFixed(2)}% (${c.matched}/${c.total})';
+    final pctRuleStr = '${c.percentage.toStringAsFixed(2)}% (${c.matched}/${c.total})';
 
     buffer.writeln('$icon ${color ? _b(titleStr) : titleStr}');
     buffer.writeln('   Coverage: $pctRuleStr $statusStr');
     if (c.indeterminate > 0) {
-      final indStr =
-          'ⓘ  ${c.indeterminate} indeterminate (value resolved at runtime — not counted)';
+      final indStr = 'ⓘ  ${c.indeterminate} indeterminate (value resolved at runtime — not counted)';
       buffer.writeln('   ${color ? _c(indStr, _dim) : indStr}');
     }
     buffer.writeln('');
@@ -433,36 +395,29 @@ String _generateHumanReport(CoverageReport report) {
 
   final allFindings = [for (final c in report.coverage.values) ...c.findings];
   if (allFindings.isNotEmpty) {
-    buffer.writeln(color
-        ? _b('🔎 Findings (${allFindings.length})')
-        : '🔎 Findings (${allFindings.length})');
+    buffer.writeln(color ? _b('🔎 Findings (${allFindings.length})') : '🔎 Findings (${allFindings.length})');
     buffer.writeln('─' * 50);
     for (final f in allFindings) {
       final isIndet = f.severity == FindingSeverity.indeterminate;
       if (isIndet) {
         final tag = color ? _c('ⓘ INDETERMINATE', _cyan) : 'ⓘ INDETERMINATE';
-        final loc = color
-            ? _c('${f.filePath}:${f.line}:${f.column}', _dim)
-            : '${f.filePath}:${f.line}:${f.column}';
+        final loc = color ? _c('${f.filePath}:${f.line}:${f.column}', _dim) : '${f.filePath}:${f.line}:${f.column}';
         buffer.writeln('$tag $loc');
-        buffer.writeln(
-            '   ${color ? _c(f.widgetType, _cyan) : f.widgetType} — ${f.message}');
+        buffer.writeln('   ${color ? _c(f.widgetType, _cyan) : f.widgetType} — ${f.message}');
       } else {
         final tag = color ? _c('✗ FAIL', _red) : '✗ FAIL';
         final loc = color
             ? '${_c(f.filePath, _dim)}${_c(':${f.line}:${f.column}', _yellow)}'
             : '${f.filePath}:${f.line}:${f.column}';
         buffer.writeln('$tag  $loc');
-        buffer.writeln(
-            '   ${color ? _b(_c(f.widgetType, _red)) : f.widgetType} — ${f.message}');
+        buffer.writeln('   ${color ? _b(_c(f.widgetType, _red)) : f.widgetType} — ${f.message}');
       }
     }
     buffer.writeln('');
   }
 
   if (report.issues.isNotEmpty) {
-    buffer.writeln(
-        color ? _c('⚠️  Engine Issues', _yellow) : '⚠️  Engine Issues');
+    buffer.writeln(color ? _c('⚠️  Engine Issues', _yellow) : '⚠️  Engine Issues');
     buffer.writeln('─' * 50);
     for (final issue in report.issues) {
       buffer.writeln('• ${color ? _c(issue, _yellow) : issue}');
@@ -482,8 +437,7 @@ String _generateMarkdownReport(CoverageReport report) {
   buffer.writeln('');
   buffer.writeln('## Summary');
   buffer.writeln('');
-  buffer.writeln(
-      '- **Overall Coverage:** ${report.overallCoverage.toStringAsFixed(2)}%');
+  buffer.writeln('- **Overall Coverage:** ${report.overallCoverage.toStringAsFixed(2)}%');
   buffer.writeln('- **Compliance Level:** `${report.complianceLevel}`');
   buffer.writeln('');
   buffer.writeln('## Coverage by Rule');
@@ -491,8 +445,7 @@ String _generateMarkdownReport(CoverageReport report) {
   buffer.writeln('| Rule | Coverage | Indeterminate | Status |');
   buffer.writeln('|------|----------|---------------|--------|');
   for (final c in report.coverage.values) {
-    final status =
-        c.isCritical ? '⚠️ CRITICAL' : (c.total == 0 ? 'ℹ️ NO DATA' : '✅ OK');
+    final status = c.isCritical ? '⚠️ CRITICAL' : (c.total == 0 ? 'ℹ️ NO DATA' : '✅ OK');
     final ind = c.indeterminate > 0 ? '${c.indeterminate}' : '—';
     buffer.writeln('| ${c.title} | ${c.percentage.toStringAsFixed(2)}% '
         '(${c.matched}/${c.total}) | $ind | $status |');
@@ -513,19 +466,15 @@ String _generateMarkdownReport(CoverageReport report) {
 
 String _generateCoverageReport(CoverageReport report) {
   final buffer = StringBuffer();
-  buffer.writeln(
-      'Overall Coverage: **${report.overallCoverage.toStringAsFixed(2)}%**');
+  buffer.writeln('Overall Coverage: **${report.overallCoverage.toStringAsFixed(2)}%**');
   buffer.writeln('Compliance Level: **${report.complianceLevel}**');
   buffer.writeln('');
   for (final c in report.coverage.values) {
     buffer.writeln('### ${c.title}');
     buffer.writeln('- Coverage: ${c.percentage.toStringAsFixed(2)}%');
     buffer.writeln('- Matched: ${c.matched}/${c.total}');
-    if (c.indeterminate > 0) {
-      buffer.writeln('- Indeterminate: ${c.indeterminate}');
-    }
-    buffer.writeln(
-        '- Status: ${c.isCritical ? "CRITICAL" : (c.total == 0 ? "NO DATA" : "OK")}');
+    if (c.indeterminate > 0) { buffer.writeln('- Indeterminate: ${c.indeterminate}'); }
+    buffer.writeln('- Status: ${c.isCritical ? "CRITICAL" : (c.total == 0 ? "NO DATA" : "OK")}');
     buffer.writeln('');
   }
   return buffer.toString();
@@ -534,16 +483,21 @@ String _generateCoverageReport(CoverageReport report) {
 void _printAnalyzeHelp(ArgParser parser) {
   print('Ethos — Accessibility Coverage Analyzer');
   print('');
-  print('Usage: ethos -p <project-path> [options]');
-  print('       ethos init -p <project-path>    (generate starter ethos.yaml)');
+  print('Usage: ethos [options]                     (analyzes current directory)');
+  print('       ethos -p <project-path> [options]');
+  print('       ethos init                          (generate starter ethos.yaml)');
+  print('       ethos watch                         (watch for changes)');
   print('');
   print('Examples:');
+  print('  ethos                        # analyze current directory');
+  print('  ethos --deep -v              # deep mode in current directory');
   print('  ethos -p ./my_app');
-  print('  ethos -p ./my_app --deep');
   print('  ethos -p ./my_app --deep -v');
   print('  ethos -p ./my_app -r json -o report.json');
   print('  ethos -p ./my_app -r markdown -o report.md');
-  print('  ethos init -p ./my_app');
+  print('  ethos init');
+  print('  ethos watch');
+  print('  ethos watch --deep');
   print('');
   print('Options:');
   print(parser.usage);
@@ -568,9 +522,11 @@ void _printInitHelp(ArgParser parser) {
 Future<void> _runWatch(List<String> arguments) async {
   final parser = ArgParser()
     ..addOption('project-path',
-        abbr: 'p', help: 'Path to Flutter project to watch', mandatory: true)
+        abbr: 'p',
+        help: 'Path to Flutter project to watch (default: current directory)')
     ..addOption('config',
-        abbr: 'c', help: 'Path to a custom ethos.yaml (default: auto-detect).')
+        abbr: 'c',
+        help: 'Path to a custom ethos.yaml (default: auto-detect).')
     ..addFlag('deep',
         abbr: 'd',
         help: 'Use deep analysis on each change (slower, more precise).',
@@ -579,15 +535,12 @@ Future<void> _runWatch(List<String> arguments) async {
 
   try {
     final results = parser.parse(arguments);
-    if (results['help'] as bool) {
-      _printWatchHelp(parser);
-      exit(0);
-    }
+    if (results['help'] as bool) { _printWatchHelp(parser); exit(0); }
 
-    final projectPath = results['project-path'] as String;
-    final configPath = results['config'] as String?;
-    final deepMode = results['deep'] as bool;
-    final sep = Platform.pathSeparator;
+    final projectPath = (results['project-path'] as String?) ?? Directory.current.path;
+    final configPath  = results['config'] as String?;
+    final deepMode    = results['deep'] as bool;
+    final sep         = Platform.pathSeparator;
 
     stderr.writeln('👁  Ethos Watch');
     stderr.writeln('  Project: $projectPath');
@@ -641,9 +594,8 @@ Future<void> _runWatch(List<String> arguments) async {
     await for (final event in controller.stream) {
       final path = event.path;
 
-      if (!path.endsWith('.dart')) {
-        continue;
-      }
+      // Only process .dart files, skip generated files.
+      if (!path.endsWith('.dart')) { continue; }
       if (path.endsWith('.g.dart') ||
           path.endsWith('.freezed.dart') ||
           path.endsWith('.gr.dart') ||
@@ -656,9 +608,7 @@ Future<void> _runWatch(List<String> arguments) async {
       // Debounce.
       final now = DateTime.now();
       final last = lastEvent[path];
-      if (last != null && now.difference(last) < debounce) {
-        continue;
-      }
+      if (last != null && now.difference(last) < debounce) { continue; }
       lastEvent[path] = now;
 
       final fileName = path.split(sep).last;
@@ -673,7 +623,7 @@ Future<void> _runWatch(List<String> arguments) async {
 
       try {
         final (newReport, diff) = await engine.reanalyzeFile(path);
-        stderr.writeln('\r Done                    ');
+        stderr.writeln('\r✅ Done                    ');
         stderr.writeln('');
         _printWatchReport(newReport, diff: diff, changedFile: fileName);
       } catch (e) {
@@ -696,7 +646,8 @@ void _printWatchReport(
   required String? changedFile,
 }) {
   // Overall summary line.
-  final overallStr = report.overallCoverage.toStringAsFixed(1).padLeft(5);
+  final overallStr =
+      report.overallCoverage.toStringAsFixed(1).padLeft(5);
   final deltaStr = diff != null && diff.overallDelta.abs() > 0.01
       ? _deltaStr(diff.overallDelta)
       : '';
@@ -705,18 +656,23 @@ void _printWatchReport(
       ' · Compliance: ${report.complianceLevel}');
   stdout.writeln('');
 
-  // Per-rule compact table.
   for (final c in report.coverage.values) {
-    final icon = c.isCritical ? '⚠️ ' : (c.total == 0 ? 'ℹ️ ' : '✅');
-    final pct = '${c.percentage.toStringAsFixed(1)}%'.padLeft(6);
-    final counts = c.total > 0 ? '(${c.matched}/${c.total})' : '     ';
+    final icon =
+        c.isCritical ? '⚠️ ' : (c.total == 0 ? 'ℹ️ ' : '✅');
+    final pct =
+        '${c.percentage.toStringAsFixed(1)}%'.padLeft(6);
+    final counts =
+        c.total > 0 ? '(${c.matched}/${c.total})' : '     ';
     final ruleDelta = diff?.ruleDelta[c.ruleId];
     final ruleTag = ruleDelta != null && ruleDelta.abs() > 0.01
         ? '  ${_deltaStr(ruleDelta)}'
         : '';
-    final ind = c.indeterminate > 0 ? '  ⓘ ${c.indeterminate}' : '';
+    final ind = c.indeterminate > 0
+        ? '  ⓘ ${c.indeterminate}'
+        : '';
 
-    stdout.writeln('$icon ${c.title.padRight(35)} $pct $counts$ruleTag$ind');
+    stdout.writeln(
+        '$icon ${c.title.padRight(35)} $pct $counts$ruleTag$ind');
   }
 
   if (diff != null) {
@@ -745,8 +701,11 @@ void _printWatchReport(
       stdout.writeln('');
       stdout.writeln('🔎 Findings in $changedFile:');
       for (final f in fileFindings) {
-        final tag = f.severity == FindingSeverity.indeterminate ? 'ⓘ' : '✗';
-        stdout.writeln('  $tag line ${f.line} — ${f.widgetType}: ${f.message}');
+        final tag = f.severity == FindingSeverity.indeterminate
+            ? 'ⓘ'
+            : '✗';
+        stdout.writeln(
+            '  $tag line ${f.line} — ${f.widgetType}: ${f.message}');
       }
     }
   }
@@ -760,7 +719,8 @@ String _deltaStr(double delta) {
   return '$sign ${delta.abs().toStringAsFixed(1)}%';
 }
 
-String _timeString(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:'
+String _timeString(DateTime dt) =>
+    '${dt.hour.toString().padLeft(2, '0')}:'
     '${dt.minute.toString().padLeft(2, '0')}:'
     '${dt.second.toString().padLeft(2, '0')}';
 

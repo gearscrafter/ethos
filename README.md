@@ -58,14 +58,17 @@ Compliance Level: NONE
 
 ```bash
 dart pub global activate ethos
-ethos -p ./my_flutter_app
+
+# From inside your Flutter project:
+cd ./my_flutter_app
+ethos
 ```
 
 ### As a library
 
 ```yaml
 dependencies:
-  ethos: ^0.6.0
+  ethos: ^0.8.2
 ```
 
 ```dart
@@ -94,12 +97,13 @@ dart pub get
 # Run against the bundled fixtures
 dart run example/main.dart
 
-# Run against your own Flutter project
-dart run bin/analyze.dart -p ./my_flutter_app
-
 # Install locally as a global command
 dart pub global activate --source path .
-ethos -p ./my_flutter_app
+
+# Analyze from inside a Flutter project — no -p needed
+cd ./my_flutter_app
+ethos
+ethos --deep -v
 ```
 
 ---
@@ -122,11 +126,11 @@ comprehensive audits — it finds widgets that standard mode misses because
 they are defined in a different file from where they are used.
 
 ```bash
-# Standard
-ethos -p ./my_app
+# Standard (from inside the project)
+ethos
 
 # Deep — with live progress
-ethos -p ./my_app --deep -v
+ethos --deep -v
 ```
 
 Deep mode falls back to standard automatically if the project context cannot
@@ -164,7 +168,8 @@ and unresolvable color expressions, then generates a starter `ethos.yaml` with
 everything pre-filled — you just review and fill in the values it can't infer.
 
 ```bash
-ethos init -p ./my_app
+# from inside your project
+ethos init
 ```
 
 Example output:
@@ -192,7 +197,7 @@ Next steps:
   2. Set role: for each widget_alias
   3. Uncomment label_arg, size_guaranteed, keyboard_ready as needed
   4. Fill in hex values under color_aliases
-  5. Run: ethos -p ./my_app -v
+  5. Run: ethos -v
 ```
 
 The generated `ethos.yaml` looks like this — nothing is invented, only
@@ -235,10 +240,11 @@ file you just saved. Every change prints the full report with coverage deltas
 so you can see the impact of each edit immediately.
 
 ```bash
-ethos watch -p ./my_app
+# from inside your project
+ethos watch
 
 # With deep analysis on each change:
-ethos watch -p ./my_app --deep
+ethos watch --deep
 ```
 
 Example output after saving a file:
@@ -303,7 +309,7 @@ Add Ethos as a dev dependency:
 ```yaml
 # pubspec.yaml
 dev_dependencies:
-  ethos: ^0.7.0
+  ethos: ^0.8.2
   test: ^1.24.0   # or flutter_test if you're in a Flutter project
 ```
 
@@ -654,13 +660,26 @@ Text('Hello', textScaler: TextScaler.noScaling)
 
 ## CLI reference
 
+`-p` is optional in all commands — when omitted, Ethos uses the current
+working directory. Run `cd my_flutter_app` first and then:
+
+```bash
+ethos                        # standard analysis of current directory
+ethos --deep -v              # deep mode with progress
+ethos init                   # generate ethos.yaml here
+ethos watch                  # watch for changes here
+ethos watch --deep           # watch + deep
+```
+
+Or pass `-p` explicitly from anywhere:
+
 ```
 ethos -p <project-path> [options]
-ethos init -p <project-path>        (generate starter ethos.yaml)
-ethos watch -p <project-path>       (watch for changes and re-analyze)
+ethos init -p <project-path>
+ethos watch -p <project-path>
 
 Options (analyze):
-  -p, --project-path   Path to the Flutter project to analyze (required)
+  -p, --project-path   Path to the Flutter project (default: current directory)
   -c, --config         Path to a custom ethos.yaml (default: auto-detect)
   -r, --report-type    Output format: human | json | markdown | coverage
                        (default: human)
@@ -672,24 +691,17 @@ Options (analyze):
   -h, --help           Show this help
 
 Options (watch):
-  -p, --project-path   Path to the Flutter project to watch (required)
+  -p, --project-path   Path to the Flutter project (default: current directory)
   -d, --deep           Use deep analysis on each change
   -h, --help           Show this help
 
-Examples:
-  ethos -p ./my_app
-  ethos -p ./my_app --deep
-  ethos -p ./my_app --deep -v
-  ethos -p ./my_app -c path/to/ethos.yaml
+More examples:
   ethos -p ./my_app -r json -o report.json
   ethos -p ./my_app -r markdown -o report.md
-  ethos init -p ./my_app
   ethos init -p ./my_app -o path/to/ethos.yaml
-  ethos watch -p ./my_app
-  ethos watch -p ./my_app --deep
 ```
 
-Verbose logs go to **stderr** so `ethos -p . -r json | jq` works cleanly.
+Verbose logs go to **stderr** so `ethos -r json | jq` works cleanly.
 Exit code `1` when any rule is below its critical threshold — useful as a CI gate.
 
 ---
