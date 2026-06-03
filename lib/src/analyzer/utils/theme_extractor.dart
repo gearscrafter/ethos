@@ -1,5 +1,4 @@
 import 'package:analyzer/dart/ast/ast.dart';
-import 'package:analyzer/dart/ast/visitor.dart';
 import '../ast/widget_visitor.dart';
 
 /// Extracts color information from `MaterialApp(theme: ThemeData(...))` and

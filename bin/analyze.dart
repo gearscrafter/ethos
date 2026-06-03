@@ -140,7 +140,7 @@ Future<void> _runAnalyze(List<String> arguments) async {
         stderr.writeln(' Deep analysis did not complete.');
         exit(1);
       }
-      report = reportHolder!;
+      report = reportHolder;
     } else {
       late final CoverageAnalyzer analyzer;
       try {
@@ -343,7 +343,6 @@ const _red = '\x1B[31m';
 const _green = '\x1B[32m';
 const _yellow = '\x1B[33m';
 const _cyan = '\x1B[36m';
-const _white = '\x1B[37m';
 const _dim = '\x1B[2m';
 
 String _c(String text, String color) => '$color$text$_reset';
