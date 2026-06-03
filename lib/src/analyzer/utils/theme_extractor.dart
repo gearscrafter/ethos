@@ -1,4 +1,5 @@
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 import '../ast/widget_visitor.dart';
 
 /// Extracts color information from `MaterialApp(theme: ThemeData(...))` and
@@ -26,6 +27,15 @@ import '../ast/widget_visitor.dart';
 /// - Dynamic / computed colors.
 /// These remain indeterminate in the contrast report.
 class ThemeExtractor {
+  /// Scans [files] for `ThemeData` declarations and returns a map of
+  /// semantic color names to their ARGB values.
+  ///
+  /// Keys use the dot-notation that Ethos uses to match `theme.X.Y`
+  /// expressions in [ContrastDetector]:
+  ///
+  /// - Text theme entries:  `"textTheme.bodyLarge"`, `"textTheme.bodyMedium"`
+  /// - Color scheme entries: `"colorScheme.primary"`, `"colorScheme.surface"`
+  /// - Scaffold background: `"scaffoldBackgroundColor"`
   static Map<String, int> extractFromFiles(List<ParsedFile> files) {
     final result = <String, int>{};
     for (final file in files) {
@@ -75,26 +85,30 @@ class ThemeExtractor {
       return;
     }
 
-    for (final arg in args) {
-      if (arg is! NamedExpression) {
+    for (final arg in args as Iterable) {
+      final slotName = _namedArgName(arg);
+      if (slotName == null) {
         continue;
       }
-      final slotName = arg.name.label.name;
-      final styleExpr = arg.expression;
+      final styleExpr = _namedArgExpr(arg);
+      if (styleExpr == null) {
+        continue;
+      }
 
       final styleArgs = _argsOf(styleExpr);
       if (styleArgs == null) {
         continue;
       }
 
-      for (final styleArg in styleArgs) {
-        if (styleArg is! NamedExpression) {
+      for (final styleArg in styleArgs as Iterable) {
+        if (_namedArgName(styleArg) != 'color') {
           continue;
         }
-        if (styleArg.name.label.name != 'color') {
+        final colorExpr = _namedArgExpr(styleArg);
+        if (colorExpr == null) {
           continue;
         }
-        final color = _resolveColor(styleArg.expression);
+        final color = _resolveColor(colorExpr);
         if (color != null) {
           result['textTheme.$slotName'] = color;
         }
@@ -111,12 +125,16 @@ class ThemeExtractor {
       return;
     }
 
-    for (final arg in args) {
-      if (arg is! NamedExpression) {
+    for (final arg in args as Iterable) {
+      final slotName = _namedArgName(arg);
+      if (slotName == null) {
         continue;
       }
-      final slotName = arg.name.label.name;
-      final color = _resolveColor(arg.expression);
+      final colorExpr = _namedArgExpr(arg);
+      if (colorExpr == null) {
+        continue;
+      }
+      final color = _resolveColor(colorExpr);
       if (color != null) {
         result['colorScheme.$slotName'] = color;
       }
@@ -175,7 +193,7 @@ class ThemeExtractor {
     return null;
   }
 
-  static NodeList<Expression>? _argsOf(Expression expr) {
+  static dynamic _argsOf(Expression expr) {
     if (expr is InstanceCreationExpression) {
       return expr.argumentList.arguments;
     }
@@ -183,6 +201,28 @@ class ThemeExtractor {
       return expr.argumentList.arguments;
     }
     return null;
+  }
+
+  static String? _namedArgName(dynamic arg) {
+    try {
+      return arg.name.label.name as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Expression? _namedArgExpr(dynamic arg) {
+    try {
+      final e = arg.argumentExpression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
+    try {
+      return arg.expression as Expression?;
+    } catch (_) {
+      return null;
+    }
   }
 
   static const Map<String, int> _materialColor = {

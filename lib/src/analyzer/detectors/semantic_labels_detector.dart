@@ -192,12 +192,12 @@ class SemanticLabelsDetector implements RuleDetector {
     if (expr == null) return _LabelState.missing;
     if (expr is StringLiteral) {
       final value = expr.stringValue;
-      if (value == null) return _LabelState.indeterminate;
+      if (value == null) return _LabelState.indeterminate; // interpolated
       return value.trim().isEmpty
           ? _LabelState.empty
           : _LabelState.literalNonEmpty;
     }
-    return _LabelState.indeterminate;
+    return _LabelState.indeterminate; // variable / method call / etc.
   }
 
   AstNode? _findEnclosingSemantics(AstNode node) {
@@ -243,19 +243,54 @@ class SemanticLabelsDetector implements RuleDetector {
     if (args == null) {
       return null;
     }
-    for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == name) {
-        return arg.expression;
-      }
+    for (final arg in args as Iterable) {
+      try {
+        if (_argNameMatches(arg, name)) {
+          return _extractExpr(arg);
+        }
+      } catch (_) {}
     }
     return null;
   }
 
-  NodeList<Expression>? _argumentsOf(AstNode node) {
-    if (node is InstanceCreationExpression) return node.argumentList.arguments;
-    if (node is MethodInvocation) return node.argumentList.arguments;
+  static Expression? _extractExpr(dynamic arg) {
+    try {
+      final e = arg.argumentExpression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
+    try {
+      return arg.expression as Expression?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  dynamic _argumentsOf(AstNode node) {
+    if (node is InstanceCreationExpression) {
+      return node.argumentList.arguments;
+    }
+    if (node is MethodInvocation) {
+      return node.argumentList.arguments;
+    }
     return null;
   }
+}
+
+bool _argNameMatches(dynamic arg, String name) {
+  try {
+    final s = arg.name?.toString();
+    if (s == name) {
+      return true;
+    }
+  } catch (_) {}
+  try {
+    if (arg.name?.label?.name == name) {
+      return true;
+    }
+  } catch (_) {}
+  return false;
 }
 
 enum _LabelState { literalNonEmpty, indeterminate, missing, empty }

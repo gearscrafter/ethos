@@ -10,25 +10,6 @@ import '../../rule_detector.dart';
 import '../deep_detector.dart';
 import '../resolved_file.dart';
 
-/// Deep version of [SemanticLabelsDetector] that follows widget definitions
-/// across files.
-///
-/// ## What this adds over the standard detector
-///
-/// The standard detector only sees `Semantics` that are syntactically present
-/// in the same `build()` method as the interactive widget.
-///
-/// This detector uses the [ProjectIndex] to:
-///
-/// 1. **Follow custom widget definitions.** When it sees `CircleIconBtn(...)`,
-///    it looks up `CircleIconBtn` in the index, finds its `build()` method,
-///    and checks whether that build method contains a `Semantics` widget.
-///    If yes — PASS, no alias needed.
-///
-/// 2. **Detect cross-method `Semantics`.** When a `Semantics` wrapper and a
-///    `GestureDetector` are in different methods of the same class (the
-///    Wonderous `_FullscreenUrlImgViewer` pattern), the index can connect
-///    them via the class-level widget tree.
 class CrossFileSemanticLabelsDetector implements DeepDetector {
   final ProjectIndex index;
 
@@ -156,8 +137,7 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
   bool _classHasInternalSemantics(String className, ResolvedFile defFile) {
     for (final widget in defFile.widgets) {
       if (widget.type == 'Semantics') {
-        final labelArg = widget.arg('label');
-        if (labelArg != null) {
+        if (widget.arg('label') != null) {
           return true;
         }
       }
@@ -165,8 +145,6 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
     return false;
   }
 
-  /// Checks whether a `Semantics` wrapper is present in another `build()`
-  /// method of the same class as [widget] — the Wonderous cross-method pattern.
   bool _hasCrossMethodSemantics(
     WidgetUsage widget,
     ResolvedFile file,
@@ -181,8 +159,7 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
     }
     for (final usage in fileUsages.widgets) {
       if (usage.type == 'Semantics' && usage.arg('label') != null) {
-        final offsetDiff = (usage.offset - widget.offset).abs();
-        if (offsetDiff < 5000) {
+        if ((usage.offset - widget.offset).abs() < 5000) {
           return true;
         }
       }
@@ -219,9 +196,11 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
     if (args == null) {
       return false;
     }
-    for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == 'label') {
-        return _isNonEmptyLiteral(arg.expression);
+    for (final arg in args as Iterable) {
+      if (_isNamedArg(arg) &&
+          _namedArgName(arg) == 'label' &&
+          _isNonEmptyLiteral(_namedArgExpr(arg))) {
+        return true;
       }
     }
     return false;
@@ -241,14 +220,8 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
     return arg is BooleanLiteral && arg.value == true;
   }
 
-  bool _hasTapGesture(WidgetUsage widget) {
-    for (final g in _tapGestures) {
-      if (widget.namedArgs.containsKey(g)) {
-        return true;
-      }
-    }
-    return false;
-  }
+  bool _hasTapGesture(WidgetUsage widget) =>
+      _tapGestures.any((g) => widget.namedArgs.containsKey(g));
 
   bool _isNonInteractiveTap(WidgetUsage widget) {
     final onTap = widget.arg('onTap');
@@ -260,15 +233,8 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
       if (body is BlockFunctionBody && body.block.statements.isEmpty) {
         return true;
       }
-      if (body is ExpressionFunctionBody &&
-          onTap.toString().contains('unfocus')) {
-        return true;
-      }
     }
-    if (onTap.toString().contains('unfocus')) {
-      return true;
-    }
-    return false;
+    return onTap.toString().contains('unfocus');
   }
 
   bool _isNonEmptyLiteral(Expression? expr) {
@@ -311,7 +277,7 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
     return null;
   }
 
-  NodeList<Expression>? _argsOf(AstNode node) {
+  dynamic _argsOf(AstNode node) {
     if (node is InstanceCreationExpression) {
       return node.argumentList.arguments;
     }
@@ -320,7 +286,39 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
     }
     return null;
   }
+
+  static bool _isNamedArg(dynamic arg) {
+    try {
+      return arg.name != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String? _namedArgName(dynamic arg) {
+    try {
+      return arg.name.label.name as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Expression? _namedArgExpr(dynamic arg) {
+    try {
+      final e = arg.argumentExpression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
+    try {
+      return arg.expression as Expression?;
+    } catch (_) {
+      return null;
+    }
+  }
 }
+
+// ─── _SemanticsFinder ─────────────────────────────────────────────────────────
 
 class _SemanticsFinder extends RecursiveAstVisitor<void> {
   bool found = false;
@@ -340,18 +338,29 @@ class _SemanticsFinder extends RecursiveAstVisitor<void> {
   }
 
   bool _hasLabel(AstNode node) {
-    final args = node is InstanceCreationExpression
-        ? node.argumentList.arguments
-        : node is MethodInvocation
-            ? node.argumentList.arguments
-            : null;
+    dynamic args;
+    if (node is InstanceCreationExpression) {
+      args = node.argumentList.arguments;
+    } else if (node is MethodInvocation) {
+      args = node.argumentList.arguments;
+    }
     if (args == null) {
       return false;
     }
-    for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == 'label') {
-        return true;
-      }
+    for (final arg in args as Iterable) {
+      try {
+        try {
+          final n = arg.name?.toString();
+          if (n == 'label') {
+            return true;
+          }
+        } catch (_) {}
+        try {
+          if (arg.name?.label?.name == 'label') {
+            return true;
+          }
+        } catch (_) {}
+      } catch (_) {}
     }
     return false;
   }

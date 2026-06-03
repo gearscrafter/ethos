@@ -11,9 +11,6 @@ import '../../utils/theme_extractor.dart';
 import '../deep_detector.dart';
 import '../resolved_file.dart';
 
-/// Deep version of [ContrastDetector] that resolves color references
-/// across files using type information.
-///
 class ResolvedContrastDetector implements DeepDetector {
   final ProjectIndex index;
 
@@ -34,7 +31,6 @@ class ResolvedContrastDetector implements DeepDetector {
     Map<String, WidgetAlias> aliases = const {},
     Map<String, ColorAlias> colorAliases = const {},
   }) {
-    // Build theme color map once.
     final themeColors = ThemeExtractor.extractFromFiles(files);
 
     int matched = 0;
@@ -51,41 +47,41 @@ class ResolvedContrastDetector implements DeepDetector {
         final styleArg = widget.arg('style');
 
         if (styleArg != null && _isTextStyle(styleArg)) {
-          final result = _tryInline(styleArg);
-          if (result != null) {
+          final r = _tryInline(styleArg);
+          if (r != null) {
             total++;
-            _judge(result.$1, result.$2, result.$3, widget, file,
-                (v) => matched += v, findings);
+            _judge(
+                r.$1, r.$2, r.$3, widget, file, (v) => matched += v, findings);
             continue;
           }
         }
 
         if (styleArg != null) {
-          final result = _tryTheme(styleArg, themeColors);
-          if (result != null) {
+          final r = _tryTheme(styleArg, themeColors);
+          if (r != null) {
             total++;
-            _judge(result.$1, result.$2, result.$3, widget, file,
-                (v) => matched += v, findings);
+            _judge(
+                r.$1, r.$2, r.$3, widget, file, (v) => matched += v, findings);
             continue;
           }
         }
 
         if (styleArg != null && colorAliases.isNotEmpty) {
-          final result = _tryAlias(styleArg, colorAliases);
-          if (result != null) {
+          final r = _tryAlias(styleArg, colorAliases);
+          if (r != null) {
             total++;
-            _judge(result.$1, result.$2, result.$3, widget, file,
-                (v) => matched += v, findings);
+            _judge(
+                r.$1, r.$2, r.$3, widget, file, (v) => matched += v, findings);
             continue;
           }
         }
 
         if (styleArg != null && !file.hasErrors) {
-          final result = _tryResolvedVariable(styleArg, file);
-          if (result != null) {
+          final r = _tryResolvedVariable(styleArg, file);
+          if (r != null) {
             total++;
-            _judge(result.$1, result.$2, result.$3, widget, file,
-                (v) => matched += v, findings);
+            _judge(
+                r.$1, r.$2, r.$3, widget, file, (v) => matched += v, findings);
             continue;
           }
         }
@@ -118,12 +114,15 @@ class ResolvedContrastDetector implements DeepDetector {
     int? bg;
     double? fontSize;
 
-    for (final arg in args) {
-      if (arg is! NamedExpression) {
+    for (final arg in args as Iterable) {
+      if (!_isNamedArg(arg)) {
         continue;
       }
-      final key = arg.name.label.name;
-      final value = arg.expression;
+      final key = _namedArgName(arg);
+      final value = _namedArgExpr(arg);
+      if (key == null || value == null) {
+        continue;
+      }
 
       switch (key) {
         case 'color':
@@ -149,19 +148,16 @@ class ResolvedContrastDetector implements DeepDetector {
     if (expr is! SimpleIdentifier) {
       return null;
     }
-
     final element = expr.element;
     if (element == null) {
       return null;
     }
-
     if (element is TopLevelVariableElement || element is FieldElement) {
       final initializer = (element as dynamic).initializer as Expression?;
       if (initializer != null) {
         return ColorResolver.resolve(initializer);
       }
     }
-
     return null;
   }
 
@@ -175,12 +171,15 @@ class ResolvedContrastDetector implements DeepDetector {
     int? fg;
     int? bg;
     double? fontSize;
-    for (final arg in args) {
-      if (arg is! NamedExpression) {
+    for (final arg in args as Iterable) {
+      if (!_isNamedArg(arg)) {
         continue;
       }
-      final key = arg.name.label.name;
-      final value = arg.expression;
+      final key = _namedArgName(arg);
+      final value = _namedArgExpr(arg);
+      if (key == null || value == null) {
+        continue;
+      }
       switch (key) {
         case 'color':
           fg = ColorResolver.resolve(value);
@@ -201,7 +200,9 @@ class ResolvedContrastDetector implements DeepDetector {
   }
 
   (int?, int?, double?)? _tryTheme(
-      Expression styleArg, Map<String, int> themeColors) {
+    Expression styleArg,
+    Map<String, int> themeColors,
+  ) {
     if (themeColors.isEmpty) {
       return null;
     }
@@ -226,7 +227,9 @@ class ResolvedContrastDetector implements DeepDetector {
   }
 
   (int?, int?, double?)? _tryAlias(
-      Expression styleArg, Map<String, ColorAlias> colorAliases) {
+    Expression styleArg,
+    Map<String, ColorAlias> colorAliases,
+  ) {
     final alias = colorAliases[styleArg.toSource().trim()];
     if (alias == null) {
       return null;
@@ -283,7 +286,7 @@ class ResolvedContrastDetector implements DeepDetector {
     return null;
   }
 
-  NodeList<Expression>? _argsOf(Expression expr) {
+  dynamic _argsOf(Expression expr) {
     if (expr is InstanceCreationExpression) {
       return expr.argumentList.arguments;
     }
@@ -291,5 +294,49 @@ class ResolvedContrastDetector implements DeepDetector {
       return expr.argumentList.arguments;
     }
     return null;
+  }
+
+  static bool _isNamedArg(dynamic arg) {
+    try {
+      return arg.name != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String? _namedArgName(dynamic arg) {
+    try {
+      final n = arg.name;
+      if (n == null) {
+        return null;
+      }
+      final s = n.toString();
+      if (s.isNotEmpty &&
+          !s.contains(' ') &&
+          !s.contains('.') &&
+          !s.contains(':')) {
+        return s;
+      }
+      try {
+        return n.label?.name as String?;
+      } catch (_) {}
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Expression? _namedArgExpr(dynamic arg) {
+    try {
+      final e = arg.argumentExpression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
+    try {
+      return arg.expression as Expression?;
+    } catch (_) {
+      return null;
+    }
   }
 }

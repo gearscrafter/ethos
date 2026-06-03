@@ -22,7 +22,7 @@ Compliance Level: NONE
   ⚠️  Keyboard Nav:    66% (8/12)  — CRITICAL
   ⚠️  Focus Order:     0%  (0/1)   — CRITICAL
   ⚠️  Non-text Content: 15% (7/45) — CRITICAL
-  ℹ️  Resize Text:      NO DATA 
+  ℹ️  Resize Text:      NO DATA (no hardcoded scale — ✅ correct)
 ```
 
 ## Features
@@ -46,6 +46,9 @@ Compliance Level: NONE
   core engine.
 - ✅ **Watch mode (`ethos watch`)** — re-analyzes only the changed file on every
   save, prints the full report with `▲/▼` deltas, and highlights new findings.
+- ✅ **Flutter test integration** — `package:ethos/ethos_test.dart` provides
+  `expect(report, meetsAccessibilityLevel(WcagLevel.a))` matchers and
+  `EthosTestHelper.analyzeSource(dartCode)` for inline detector unit tests.
 
 ---
 
@@ -288,7 +291,160 @@ print('Resolved rules: ${diff.resolvedCritical}');
 
 ---
 
-## Configuration (optional): `ethos.yaml`
+## Testing your Flutter project's accessibility
+
+Ethos ships a separate test utilities library so you can write accessibility
+assertions directly inside your existing `dart test` or `flutter_test` suites.
+
+### Setup
+
+Add Ethos as a dev dependency:
+
+```yaml
+# pubspec.yaml
+dev_dependencies:
+  ethos: ^0.7.0
+  test: ^1.24.0   # or flutter_test if you're in a Flutter project
+```
+
+### Project-level accessibility test
+
+Analyze your whole `lib/` folder once in `setUpAll` and assert against the
+report. This is the recommended pattern for CI gates:
+
+```dart
+// test/accessibility_test.dart
+import 'package:test/test.dart';
+import 'package:ethos/ethos_test.dart';
+
+void main() {
+  group('Accessibility coverage', () {
+    late CoverageReport report;
+
+    setUpAll(() async {
+      report = await EthosTestHelper.analyzeProject('lib/');
+    });
+
+    test('meets WCAG Level A', () {
+      expect(report, meetsAccessibilityLevel(WcagLevel.a));
+    });
+
+    test('semantic labels above 80%', () {
+      expect(report, hasRuleCoverage(
+        'wcag_1_3_1_semantics_label',
+        greaterThan(80),
+      ));
+    });
+
+    test('no critical failures', () {
+      expect(report, hasNoCriticalFailures());
+    });
+
+    test('no image accessibility issues', () {
+      expect(report, hasNoFindingsFor('wcag_1_1_1_non_text_content'));
+    });
+  });
+}
+```
+
+Run it with:
+
+```bash
+dart test test/accessibility_test.dart
+# or
+flutter test test/accessibility_test.dart
+```
+
+Exit code `1` when any assertion fails — plugs straight into CI.
+
+### Detector unit tests with inline source
+
+`EthosTestHelper.analyzeSource` parses a Dart snippet in memory without
+touching the filesystem. Use it to test specific widgets in isolation:
+
+```dart
+import 'package:test/test.dart';
+import 'package:ethos/ethos_test.dart';
+
+void main() {
+  group('Icon accessibility', () {
+    test('Icon with semanticLabel passes', () async {
+      final report = await EthosTestHelper.analyzeSource(
+        "Icon(Icons.search, semanticLabel: 'Search artifacts')",
+      );
+      expect(report, passesRule('wcag_1_1_1_non_text_content'));
+    });
+
+    test('Icon without semanticLabel fails', () async {
+      final report = await EthosTestHelper.analyzeSource('Icon(Icons.close)');
+      final cov = report.coverage['wcag_1_1_1_non_text_content'];
+      expect(cov?.findings, isNotEmpty);
+    });
+  });
+
+  group('GestureDetector accessibility', () {
+    test('with Semantics ancestor passes', () async {
+      final report = await EthosTestHelper.analyzeSource('''
+        Semantics(
+          label: 'Open profile',
+          child: GestureDetector(
+            onTap: () => navigate(),
+            child: Icon(Icons.person),
+          ),
+        )
+      ''');
+      expect(report, passesRule('wcag_1_3_1_semantics_label'));
+    });
+
+    test('without Semantics fails', () async {
+      final report = await EthosTestHelper.analyzeSource('''
+        GestureDetector(onTap: () => navigate(), child: Icon(Icons.settings))
+      ''');
+      final cov = report.coverage['wcag_1_3_1_semantics_label'];
+      expect(cov?.findings, isNotEmpty);
+    });
+  });
+
+  group('Color contrast', () {
+    test('black on white passes', () async {
+      final report = await EthosTestHelper.analyzeSource(
+        "Text('Hello', style: TextStyle(color: Colors.black, backgroundColor: Colors.white))",
+      );
+      expect(report, passesRule('wcag_1_4_3_contrast_minimum'));
+    });
+
+    test('light grey on white fails', () async {
+      final report = await EthosTestHelper.analyzeSource(
+        "Text('Hello', style: TextStyle(color: Color(0xFFCCCCCC), backgroundColor: Color(0xFFFFFFFF)))",
+      );
+      final cov = report.coverage['wcag_1_4_3_contrast_minimum'];
+      expect(cov?.findings, isNotEmpty);
+    });
+  });
+}
+```
+
+### Available matchers
+
+| Matcher | Description |
+|---------|-------------|
+| `meetsAccessibilityLevel(WcagLevel.a)` | Overall coverage meets Level A (≥70%), AA (≥85%), or AAA (≥95%) |
+| `passesRule('rule_id')` | A specific rule is not below its critical threshold |
+| `hasRuleCoverage('rule_id', greaterThan(80))` | Rule coverage satisfies any `Matcher` |
+| `hasNoCriticalFailures()` | No rule is below its critical threshold |
+| `hasNoFindingsFor('rule_id')` | No findings for a specific rule |
+
+### One-liner smoke test
+
+For a quick CI check with no setup:
+
+```dart
+test('no critical a11y failures', () async {
+  await EthosTestHelper.expectNoCriticalFailures('lib/');
+});
+```
+
+Throws a descriptive `TestFailure` listing every critical rule if any exist.
 
 Ethos works out of the box — the built-in spec already covers Flutter's
 standard widgets (`GestureDetector`, `InkWell`, `IconButton`, `TextField`,
@@ -565,10 +721,22 @@ await for (final event in deepAnalyzer.analyze()) {
   }
 }
 
+// Watch entry point
+final engine = await WatchEngine.forProject('./my_app');
+final baseline = await engine.initialScan();
+final (newReport, diff) = await engine.reanalyzeFile(changedPath);
+
 // Output
 print(report.overallCoverage);   // double 0–100
 print(report.complianceLevel);   // 'A' | 'AA' | 'AAA' | 'NONE'
 print(report.toJsonString());    // JSON for CI pipelines
+```
+
+Two separate import paths keep test utilities out of production builds:
+
+```dart
+import 'package:ethos/ethos.dart';       // main API — use in production code
+import 'package:ethos/ethos_test.dart';  // matchers + helpers — use in tests only
 ```
 
 ---

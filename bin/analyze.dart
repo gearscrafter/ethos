@@ -86,7 +86,7 @@ Future<void> _runAnalyze(List<String> arguments) async {
       );
 
       if (verbose) {
-        stderr.writeln(' Spec v${deepAnalyzer.spec.version} '
+        stderr.writeln('Spec v${deepAnalyzer.spec.version} '
             '(${deepAnalyzer.spec.rules.length} rules, '
             '${deepAnalyzer.spec.widgetAliases.length} aliases)');
       }
@@ -129,18 +129,18 @@ Future<void> _runAnalyze(List<String> arguments) async {
               inProgressLine = false;
             }
             stderr.writeln(usedDeep
-                ? ' Deep analysis complete'
-                : ' Analysis complete (fell back to standard mode)');
+                ? '✅ Deep analysis complete'
+                : '✅ Analysis complete (fell back to standard mode)');
             stderr.writeln('');
             reportHolder = completedReport;
         }
       }
 
       if (reportHolder == null) {
-        stderr.writeln('❌ Deep analysis did not complete.');
+        stderr.writeln(' Deep analysis did not complete.');
         exit(1);
       }
-      report = reportHolder;
+      report = reportHolder!;
     } else {
       late final CoverageAnalyzer analyzer;
       try {
@@ -280,7 +280,7 @@ Future<void> _runInit(List<String> arguments) async {
 
     final outputFile = File(outputPath);
     if (await outputFile.exists()) {
-      stdout.write('  $outputPath already exists. Overwrite? [y/N] ');
+      stdout.write('⚠️  $outputPath already exists. Overwrite? [y/N] ');
       final response = stdin.readLineSync()?.trim().toLowerCase() ?? '';
       if (response != 'y' && response != 'yes') {
         print('Cancelled. Existing ethos.yaml was not modified.');
@@ -337,56 +337,139 @@ String _progressBar(int current, int total) {
   return '[${'█' * filled}${'░' * (width - filled)}]';
 }
 
+const _reset = '\x1B[0m';
+const _bold = '\x1B[1m';
+const _red = '\x1B[31m';
+const _green = '\x1B[32m';
+const _yellow = '\x1B[33m';
+const _cyan = '\x1B[36m';
+const _white = '\x1B[37m';
+const _dim = '\x1B[2m';
+
+String _c(String text, String color) => '$color$text$_reset';
+String _b(String text) => '$_bold$text$_reset';
+
+bool _supportsAnsi() {
+  return stdout.hasTerminal;
+}
+
 String _generateHumanReport(CoverageReport report) {
+  final color = _supportsAnsi();
   final buffer = StringBuffer();
-  buffer.writeln('╔════════════════════════════════════════════════╗');
-  buffer.writeln('║  Accessibility Coverage Report                 ║');
-  buffer.writeln('${'║  Spec v${report.specVersion}'.padRight(49)}║');
-  buffer.writeln('╚════════════════════════════════════════════════╝');
+
+  final header = color
+      ? '$_bold$_cyan╔════════════════════════════════════════════════╗$_reset\n'
+          '$_bold$_cyan║  Accessibility Coverage Report                 ║$_reset\n'
+          '$_bold$_cyan║  Spec v${report.specVersion}${''.padRight(41 - report.specVersion.length)}║$_reset'
+          '\n$_bold$_cyan╚════════════════════════════════════════════════╝$_reset'
+      : '${'╔════════════════════════════════════════════════╗\n'
+          '║  Accessibility Coverage Report                 ║\n'
+          '║  Spec v${report.specVersion}'.padRight(49)}║\n╚════════════════════════════════════════════════╝';
+  buffer.writeln(header);
   buffer.writeln('');
-  buffer.writeln('📊 Summary');
+
+  buffer.writeln(color ? _b('📊 Summary') : '📊 Summary');
   buffer.writeln('─' * 50);
-  buffer.writeln(
-      'Overall Coverage: ${report.overallCoverage.toStringAsFixed(2)}%');
-  buffer.writeln('Compliance Level: ${report.complianceLevel}');
+
+  final pct = report.overallCoverage;
+  final pctStr = '${pct.toStringAsFixed(2)}%';
+  final pctColored = color
+      ? (pct >= 85
+          ? _c(pctStr, _green)
+          : pct >= 70
+              ? _c(pctStr, _yellow)
+              : _c(pctStr, _red))
+      : pctStr;
+
+  final level = report.complianceLevel;
+  final levelColored = color
+      ? (level == 'AAA' || level == 'AA' || level == 'A'
+          ? _c(level, _green)
+          : _c(level, _red))
+      : level;
+
+  buffer.writeln('Overall Coverage: $pctColored');
+  buffer.writeln('Compliance Level: ${color ? _b(levelColored) : level}');
   buffer.writeln('Project: ${report.projectPath}');
-  buffer.writeln('Analyzed: ${report.timestamp.toIso8601String()}');
+  buffer.writeln(
+      'Analyzed: ${color ? _c(report.timestamp.toIso8601String(), _dim) : report.timestamp.toIso8601String()}');
   buffer.writeln('');
-  buffer.writeln('📋 Coverage by Rule');
+
+  buffer.writeln(color ? _b('📋 Coverage by Rule') : '📋 Coverage by Rule');
   buffer.writeln('─' * 50);
+
   for (final c in report.coverage.values) {
-    final icon = c.isCritical ? '⚠️ ' : (c.total == 0 ? 'ℹ️ ' : '✅');
-    final status =
-        c.isCritical ? 'CRITICAL' : (c.total == 0 ? 'NO DATA' : 'OK');
-    buffer.writeln('$icon ${c.title}');
-    buffer.writeln('   Coverage: ${c.percentage.toStringAsFixed(2)}% '
-        '(${c.matched}/${c.total}) [$status]');
+    final isCritical = c.isCritical;
+    final noData = c.total == 0;
+
+    final icon = isCritical ? '⚠️ ' : (noData ? 'ℹ️ ' : '✅');
+    final status = isCritical ? 'CRITICAL' : (noData ? 'NO DATA' : 'OK');
+
+    final titleStr = color
+        ? (isCritical
+            ? _c(c.title, _red)
+            : noData
+                ? _c(c.title, _cyan)
+                : _c(c.title, _green))
+        : c.title;
+    final statusStr = color
+        ? (isCritical
+            ? _c('[$status]', _red)
+            : noData
+                ? _c('[$status]', _cyan)
+                : _c('[$status]', _green))
+        : '[$status]';
+    final pctRuleStr =
+        '${c.percentage.toStringAsFixed(2)}% (${c.matched}/${c.total})';
+
+    buffer.writeln('$icon ${color ? _b(titleStr) : titleStr}');
+    buffer.writeln('   Coverage: $pctRuleStr $statusStr');
     if (c.indeterminate > 0) {
-      buffer.writeln('   ⓘ  ${c.indeterminate} indeterminate '
-          '(value resolved at runtime — not counted)');
+      final indStr =
+          'ⓘ  ${c.indeterminate} indeterminate (value resolved at runtime — not counted)';
+      buffer.writeln('   ${color ? _c(indStr, _dim) : indStr}');
     }
     buffer.writeln('');
   }
+
   final allFindings = [for (final c in report.coverage.values) ...c.findings];
   if (allFindings.isNotEmpty) {
-    buffer.writeln('🔎 Findings (${allFindings.length})');
+    buffer.writeln(color
+        ? _b('🔎 Findings (${allFindings.length})')
+        : '🔎 Findings (${allFindings.length})');
     buffer.writeln('─' * 50);
     for (final f in allFindings) {
-      final tag = f.severity == FindingSeverity.indeterminate
-          ? 'ⓘ INDETERMINATE'
-          : '✗ FAIL          ';
-      buffer.writeln('$tag ${f.filePath}:${f.line}:${f.column}');
-      buffer.writeln('   ${f.widgetType} — ${f.message}');
+      final isIndet = f.severity == FindingSeverity.indeterminate;
+      if (isIndet) {
+        final tag = color ? _c('ⓘ INDETERMINATE', _cyan) : 'ⓘ INDETERMINATE';
+        final loc = color
+            ? _c('${f.filePath}:${f.line}:${f.column}', _dim)
+            : '${f.filePath}:${f.line}:${f.column}';
+        buffer.writeln('$tag $loc');
+        buffer.writeln(
+            '   ${color ? _c(f.widgetType, _cyan) : f.widgetType} — ${f.message}');
+      } else {
+        final tag = color ? _c('✗ FAIL', _red) : '✗ FAIL';
+        final loc = color
+            ? '${_c(f.filePath, _dim)}${_c(':${f.line}:${f.column}', _yellow)}'
+            : '${f.filePath}:${f.line}:${f.column}';
+        buffer.writeln('$tag  $loc');
+        buffer.writeln(
+            '   ${color ? _b(_c(f.widgetType, _red)) : f.widgetType} — ${f.message}');
+      }
     }
     buffer.writeln('');
   }
+
   if (report.issues.isNotEmpty) {
-    buffer.writeln('⚠️  Engine Issues');
+    buffer.writeln(
+        color ? _c('⚠️  Engine Issues', _yellow) : '⚠️  Engine Issues');
     buffer.writeln('─' * 50);
     for (final issue in report.issues) {
-      buffer.writeln('• $issue');
+      buffer.writeln('• ${color ? _c(issue, _yellow) : issue}');
     }
   }
+
   return buffer.toString();
 }
 
@@ -534,7 +617,6 @@ Future<void> _runWatch(List<String> arguments) async {
 
     _printWatchReport(initialReport, diff: null, changedFile: null);
 
-    // ── File watcher ────────────────────────────────────────────────────
     // Watch lib/, test/, and example/ if they exist.
     final watchDirs = ['lib', 'test', 'example']
         .map((d) => Directory('$projectPath$sep$d'))
@@ -560,7 +642,6 @@ Future<void> _runWatch(List<String> arguments) async {
     await for (final event in controller.stream) {
       final path = event.path;
 
-      // Only process .dart files, skip generated files.
       if (!path.endsWith('.dart')) {
         continue;
       }

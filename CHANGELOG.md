@@ -1,3 +1,26 @@
+## 0.8.0
+ 
+- **Flutter test integration** — new `package:ethos/ethos_test.dart` barrel
+  with matchers and helpers for use in `dart test` or `flutter_test` suites.
+  Import path is separate from the main API so test utilities never reach
+  production builds.
+  
+- **`analyzer 8.x` compatibility fixes** — several breaking AST API changes
+  introduced in `analyzer 8.x` are now handled across all detectors and
+  utilities:
+  - `NamedArgument.name` is now a `Token` (not a `Label`) — reading the
+    parameter name via `token.toString()` with a `label?.name` fallback for
+    7.x.
+  - `NamedArgument.argumentExpression` replaces `.expression` as the canonical
+    getter for the argument value — tried first with `.expression` fallback.
+  - `PositionalArgument` no longer implements `Expression` — unwrapped via
+    `.argumentExpression` before type checks.
+  - `NodeList<Argument>` replaces `NodeList<Expression>` in
+    `ArgumentList.arguments` — all argument iteration uses `dynamic` typing
+    with duck-typed helpers.
+
+
+
 ## 0.7.0
  
 - **`ethos watch` subcommand** — incremental re-analysis on file save. Performs
@@ -5,7 +28,7 @@
   the report from the cached results of all other files. Prints the full report
   after each change with `▲/▼` coverage deltas and highlights findings in the
   modified file only.
-  
+
 ### 0.6.0
 
 - **2 new WCAG detectors** (7 rules covered):

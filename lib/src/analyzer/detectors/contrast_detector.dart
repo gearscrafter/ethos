@@ -103,6 +103,7 @@ class ContrastDetector implements RuleDetector {
           }
         }
 
+        // ── No layer resolved both colors → indeterminate ────────────────
         indeterminate++;
       }
     }
@@ -130,12 +131,15 @@ class ContrastDetector implements RuleDetector {
     int? bg;
     double? fontSize;
 
-    for (final arg in args) {
-      if (arg is! NamedExpression) {
+    for (final arg in args as Iterable) {
+      if (!_isNamedArg(arg)) {
         continue;
       }
-      final key = arg.name.label.name;
-      final value = arg.expression;
+      final key = _namedArgName(arg);
+      final value = _namedArgExpr(arg);
+      if (key == null || value == null) {
+        continue;
+      }
       switch (key) {
         case 'color':
           fg = ColorResolver.resolve(value);
@@ -254,7 +258,7 @@ class ContrastDetector implements RuleDetector {
     return null;
   }
 
-  NodeList<Expression>? _args(Expression expr) {
+  dynamic _args(Expression expr) {
     if (expr is InstanceCreationExpression) {
       return expr.argumentList.arguments;
     }
@@ -262,5 +266,49 @@ class ContrastDetector implements RuleDetector {
       return expr.argumentList.arguments;
     }
     return null;
+  }
+
+  static bool _isNamedArg(dynamic arg) {
+    try {
+      return arg.name != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String? _namedArgName(dynamic arg) {
+    try {
+      final n = arg.name;
+      if (n == null) {
+        return null;
+      }
+      final s = n.toString();
+      if (s.isNotEmpty &&
+          !s.contains(' ') &&
+          !s.contains('.') &&
+          !s.contains(':')) {
+        return s;
+      }
+      try {
+        return n.label?.name as String?;
+      } catch (_) {}
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Expression? _namedArgExpr(dynamic arg) {
+    try {
+      final e = arg.argumentExpression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
+    try {
+      return arg.expression as Expression?;
+    } catch (_) {
+      return null;
+    }
   }
 }

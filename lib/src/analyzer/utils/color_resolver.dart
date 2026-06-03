@@ -19,13 +19,13 @@ class ColorResolver {
   /// Attempts to resolve [expr] to a 32-bit ARGB value. Returns `null` if
   /// the color cannot be determined from source.
   static int? resolve(Expression expr) {
-    // Color(0xFF2196F3)
     if (expr is InstanceCreationExpression || expr is MethodInvocation) {
       final name = _ctorName(expr);
       if (name == 'Color') {
         final args = _args(expr);
         if (args != null && args.isNotEmpty) {
-          final first = args.first;
+          final firstArg = args.first;
+          final first = _unwrapArg(firstArg);
           if (first is IntegerLiteral) {
             return _normalize(first.value);
           }
@@ -100,10 +100,33 @@ class ColorResolver {
     return null;
   }
 
-  static NodeList<Expression>? _args(Expression expr) {
-    if (expr is InstanceCreationExpression) return expr.argumentList.arguments;
-    if (expr is MethodInvocation) return expr.argumentList.arguments;
+  static dynamic _args(Expression expr) {
+    if (expr is InstanceCreationExpression) {
+      return expr.argumentList.arguments;
+    }
+    if (expr is MethodInvocation) {
+      return expr.argumentList.arguments;
+    }
     return null;
+  }
+
+  static dynamic _unwrapArg(dynamic arg) {
+    if (arg is Expression) {
+      return arg;
+    }
+    try {
+      final e = arg.argumentExpression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
+    try {
+      final e = arg.expression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
+    return arg;
   }
 
   /// Material primary swatch base values (shade500), plus the basic colors.

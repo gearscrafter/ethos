@@ -161,19 +161,48 @@ class TouchTargetDetector implements RuleDetector {
     if (args == null) {
       return null;
     }
-    for (final arg in args) {
-      if (arg is NamedExpression && arg.name.label.name == name) {
-        return arg.expression;
-      }
+    for (final arg in args as Iterable) {
+      try {
+        if (_argNameMatches(arg, name)) {
+          try {
+            final e = (arg as dynamic).argumentExpression;
+            if (e is Expression) {
+              return e;
+            }
+          } catch (_) {}
+          try {
+            return (arg as dynamic).expression as Expression?;
+          } catch (_) {}
+        }
+      } catch (_) {}
     }
     return null;
   }
 
-  NodeList<Expression>? _argsOf(AstNode node) {
-    if (node is InstanceCreationExpression) return node.argumentList.arguments;
-    if (node is MethodInvocation) return node.argumentList.arguments;
+  dynamic _argsOf(AstNode node) {
+    if (node is InstanceCreationExpression) {
+      return node.argumentList.arguments;
+    }
+    if (node is MethodInvocation) {
+      return node.argumentList.arguments;
+    }
     return null;
   }
+}
+
+bool _argNameMatches(dynamic arg, String name) {
+  try {
+    final s = arg.name?.toString();
+    if (s == name) {
+      return true;
+    }
+  } catch (_) {}
+  try {
+    if (arg.name?.label?.name == name) {
+      return true;
+    }
+  } catch (_) {}
+  return false;
 }
 
 enum _SizeVerdict { pass, fail, unknown }

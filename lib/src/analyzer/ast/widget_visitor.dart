@@ -5,28 +5,13 @@ import 'package:analyzer/dart/ast/visitor.dart';
 
 /// A single widget construction extracted from the AST.
 class WidgetUsage {
-  /// Constructor name as written in source (e.g. `IconButton`, `Semantics`).
   final String type;
-
-  /// Named arguments passed to the constructor.
   final Map<String, Expression> namedArgs;
-
-  /// Positional arguments in source order.
   final List<Expression> positionalArgs;
-
-  /// Ancestor widget types, outermost first.
   final List<String> ancestors;
-
-  /// 1-based line number where the constructor starts.
   final int line;
-
-  /// 1-based column number where the constructor starts.
   final int column;
-
-  /// Character offset in the source file.
   final int offset;
-
-  /// Reference to the original AST node.
   final AstNode node;
 
   WidgetUsage({
@@ -40,18 +25,16 @@ class WidgetUsage {
     required this.node,
   });
 
-  /// True if any ancestor widget has the given [type].
   bool hasAncestor(String type) => ancestors.contains(type);
-
-  /// True if any ancestor widget type matches any of [types].
   bool hasAnyAncestor(Iterable<String> types) {
     for (final a in ancestors) {
-      if (types.contains(a)) return true;
+      if (types.contains(a)) {
+        return true;
+      }
     }
     return false;
   }
 
-  /// Returns the named argument [name] if present, else `null`.
   Expression? arg(String name) => namedArgs[name];
 
   @override
@@ -60,20 +43,12 @@ class WidgetUsage {
 
 /// Result of parsing a single Dart file.
 class ParsedFile {
-  /// Absolute or relative path to the source file.
   final String path;
-
-  /// Every widget construction found in the file.
   final List<WidgetUsage> widgets;
-
-  /// True if the file had parse errors (widgets may still be partially found).
   final bool hasErrors;
 
-  ParsedFile({
-    required this.path,
-    required this.widgets,
-    required this.hasErrors,
-  });
+  ParsedFile(
+      {required this.path, required this.widgets, required this.hasErrors});
 }
 
 /// Parses a Dart source file and returns every widget construction found.
@@ -88,8 +63,18 @@ ParsedFile parseDartFile(String path, String source) {
   return ParsedFile(
     path: path,
     widgets: visitor.widgets,
-    hasErrors: result.errors.isNotEmpty,
+    hasErrors: _hasErrors(result),
   );
+}
+
+bool _hasErrors(dynamic result) {
+  try {
+    return (result.diagnostics as List).isNotEmpty;
+  } catch (_) {}
+  try {
+    return (result.errors as List).isNotEmpty;
+  } catch (_) {}
+  return false;
 }
 
 class _WidgetVisitor extends RecursiveAstVisitor<void> {
@@ -107,28 +92,35 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
       return;
     }
     _record(
-      typeName: typeName,
-      arguments: node.argumentList.arguments.toList(),
-      offset: node.offset,
-      node: node,
-      descend: () => super.visitInstanceCreationExpression(node),
-    );
+        typeName: typeName,
+        arguments: node.argumentList.arguments as dynamic,
+        offset: node.offset,
+        node: node,
+        descend: () => super.visitInstanceCreationExpression(node));
   }
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
     final name = node.methodName.name;
-    final isConstructorLike =
-        node.realTarget == null && name.isNotEmpty && _startsUppercase(name);
-
-    if (isConstructorLike) {
+    if (node.realTarget == null && name.isNotEmpty && _startsUppercase(name)) {
       _record(
-        typeName: name,
-        arguments: node.argumentList.arguments.toList(),
-        offset: node.offset,
-        node: node,
-        descend: () => super.visitMethodInvocation(node),
-      );
+          typeName: name,
+          arguments: node.argumentList.arguments as dynamic,
+          offset: node.offset,
+          node: node,
+          descend: () => super.visitMethodInvocation(node));
+    } else if (node.realTarget is SimpleIdentifier) {
+      final targetName = (node.realTarget as SimpleIdentifier).name;
+      if (_startsUppercase(targetName)) {
+        _record(
+            typeName: targetName,
+            arguments: node.argumentList.arguments as dynamic,
+            offset: node.offset,
+            node: node,
+            descend: () => super.visitMethodInvocation(node));
+      } else {
+        super.visitMethodInvocation(node);
+      }
     } else {
       super.visitMethodInvocation(node);
     }
@@ -136,23 +128,39 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
 
   void _record({
     required String typeName,
-    required List<Expression> arguments,
+    required dynamic arguments,
     required int offset,
     required AstNode node,
     required void Function() descend,
   }) {
     final namedArgs = <String, Expression>{};
     final positionalArgs = <Expression>[];
-    for (final arg in arguments) {
-      if (arg is NamedExpression) {
-        namedArgs[arg.name.label.name] = arg.expression;
-      } else {
+
+    for (final arg in arguments as Iterable) {
+      final name = _namedArgName(arg);
+      final expr = _namedArgExpression(arg);
+      if (name != null && expr != null) {
+        namedArgs[name] = expr;
+      } else if (arg is Expression) {
         positionalArgs.add(arg);
+      } else {
+        try {
+          final e = (arg as dynamic).argumentExpression as Expression?;
+          if (e != null) {
+            positionalArgs.add(e);
+          }
+        } catch (_) {
+          try {
+            final e = (arg as dynamic).expression as Expression?;
+            if (e != null) {
+              positionalArgs.add(e);
+            }
+          } catch (_) {}
+        }
       }
     }
 
     final location = _lineInfo.getLocation(offset);
-
     widgets.add(WidgetUsage(
       type: typeName,
       namedArgs: namedArgs,
@@ -172,19 +180,81 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
     }
   }
 
+  static String? _namedArgName(dynamic arg) {
+    try {
+      final nameNode = arg.name;
+      if (nameNode == null) {
+        return null;
+      }
+
+      try {
+        final s = nameNode.toString();
+        if (s.isNotEmpty &&
+            !s.contains(' ') &&
+            !s.contains('.') &&
+            !s.contains(':')) {
+          return s;
+        }
+      } catch (_) {}
+
+      // analyzer 8.x: Token — .lexeme
+      try {
+        final lexeme = nameNode.lexeme;
+        if (lexeme is String && lexeme.isNotEmpty) {
+          return lexeme;
+        }
+      } catch (_) {}
+
+      // analyzer 7.x: Label — arg.name.label.name
+      try {
+        final labelName = nameNode.label?.name;
+        if (labelName is String && labelName.isNotEmpty) {
+          return labelName;
+        }
+      } catch (_) {}
+
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Extracts the value [Expression] from a named argument.
+  static Expression? _namedArgExpression(dynamic arg) {
+    try {
+      final e = arg.argumentExpression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
+    try {
+      final e = arg.expression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
+    try {
+      final entities = (arg as dynamic).childEntities.toList();
+      if (entities.isNotEmpty) {
+        final last = entities.last;
+        if (last is Expression) {
+          return last;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static String? _typeNameOf(ConstructorName constructorName) {
     var source = constructorName.type.toSource().trim();
-
-    final genericIdx = source.indexOf('<');
-    if (genericIdx != -1) {
-      source = source.substring(0, genericIdx);
+    final gi = source.indexOf('<');
+    if (gi != -1) {
+      source = source.substring(0, gi);
     }
-
-    final dotIdx = source.lastIndexOf('.');
-    if (dotIdx != -1) {
-      source = source.substring(dotIdx + 1);
+    final di = source.lastIndexOf('.');
+    if (di != -1) {
+      source = source.substring(di + 1);
     }
-
     return source.isEmpty ? null : source;
   }
 
@@ -193,6 +263,6 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
       return false;
     }
     final c = s.codeUnitAt(0);
-    return c >= 0x41 && c <= 0x5A; // 'A'..'Z'
+    return c >= 0x41 && c <= 0x5A;
   }
 }

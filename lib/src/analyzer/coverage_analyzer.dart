@@ -147,6 +147,53 @@ class CoverageAnalyzer {
     }
   }
 
+  Future<CoverageReport> analyzeFiles(List<ParsedFile> parsedFiles) async {
+    final report = CoverageReport(
+      specVersion: spec.version,
+      projectPath: projectPath,
+      timestamp: DateTime.now(),
+      coverage: {},
+      issues: [],
+    );
+
+    for (final rule in spec.rules.values) {
+      final detector = registry.find(rule.ruleId);
+      if (detector == null) {
+        report.issues.add(
+          'No detector registered for rule "${rule.ruleId}" — skipping.',
+        );
+        report.coverage[rule.ruleId] = RuleCoverage.calculate(
+          ruleId: rule.ruleId,
+          title: rule.title,
+          matched: 0,
+          total: 0,
+          criticalThreshold: rule.coverageMetric.criticalThreshold,
+        );
+        continue;
+      }
+
+      final result = detector.analyze(
+        rule: rule,
+        files: parsedFiles,
+        aliases: spec.widgetAliases,
+        colorAliases: spec.colorAliases,
+      );
+      report.coverage[rule.ruleId] = RuleCoverage.calculate(
+        ruleId: rule.ruleId,
+        title: rule.title,
+        matched: result.matched,
+        total: result.total,
+        indeterminate: result.indeterminate,
+        criticalThreshold: rule.coverageMetric.criticalThreshold,
+        findings: result.findings,
+      );
+    }
+
+    report.calculateOverall();
+    report.determineComplianceLevel();
+    return report;
+  }
+
   Future<List<File>> _findDartFiles(String root) async {
     final dir = Directory(root);
     final dartFiles = <File>[];

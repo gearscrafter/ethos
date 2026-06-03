@@ -1,6 +1,6 @@
 name: ethos
 description: Measure accessibility coverage in Flutter apps using WCAG 2.2 specifications with Spec-Driven Development.
-version: 0.7.0
+version: 0.8.0
 homepage: https://github.com/gearscrafter/ethos
 repository: https://github.com/gearscrafter/ethos
 issue_tracker: https://github.com/gearscrafter/ethos/issues
@@ -20,6 +20,7 @@ dependencies:
   args: ^2.4.0
   path: ^1.8.0
   collection: ^1.17.0
+  matcher: ^0.12.0
 
 dev_dependencies:
   test: ^1.26.3

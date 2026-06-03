@@ -18,14 +18,6 @@ import 'resolved_file.dart';
 import 'detectors/cross_file_semantic_labels_detector.dart';
 import 'detectors/resolved_contrast_detector.dart';
 
-/// Engine for deep (type-resolved) accessibility analysis.
-///
-/// Uses [AnalysisContextCollection] to resolve the full project — cross-file
-/// references, class hierarchies, and type information are all available.
-///
-/// Emits [AnalysisProgress] events as a [Stream] so callers can show a
-/// progress indicator. Falls back to [CoverageAnalyzer.analyze] automatically
-/// when the project is not ready.
 class DeepAnalyzer {
   final Spec spec;
   final String projectPath;
@@ -53,8 +45,6 @@ class DeepAnalyzer {
     );
   }
 
-  /// Runs the deep analysis, emitting [AnalysisProgress] events.
-  ///
   Stream<AnalysisProgress> analyze() async* {
     yield const AnalysisPreparing();
 
@@ -174,9 +164,7 @@ class DeepAnalyzer {
 
       final detector = registry.find(rule.ruleId);
       if (detector == null) {
-        report.issues.add(
-          'No detector for rule "${rule.ruleId}" — skipping.',
-        );
+        report.issues.add('No detector for rule "${rule.ruleId}" — skipping.');
         report.coverage[rule.ruleId] = RuleCoverage.calculate(
           ruleId: rule.ruleId,
           title: rule.title,
@@ -252,12 +240,11 @@ class DeepAnalyzer {
     final result = <String, ClassElement>{};
     for (final declaration in unit.declarations) {
       if (declaration is ClassDeclaration) {
-        final name = declaration.name.lexeme;
-        if (name.isNotEmpty) {
+        final name = _classDeclarationName(declaration);
+        if (name != null && name.isNotEmpty) {
           try {
-            final fragment = declaration.declaredFragment;
-            if (fragment != null) {
-              final el = fragment.element;
+            final el = _classElement(declaration);
+            if (el != null) {
               result[name] = el;
             }
           } catch (_) {}
@@ -267,9 +254,51 @@ class DeepAnalyzer {
     return result;
   }
 
-  /// Visits the resolved AST to produce [WidgetUsage] objects.
-  /// Uses the same PascalCase + MethodInvocation heuristic as the
-  /// standard [parseDartFile].
+  static String? _classDeclarationName(ClassDeclaration declaration) {
+    final d = declaration as dynamic;
+    // analyzer 8.x: namePart.typeName.lexeme
+    try {
+      return d.namePart.typeName.lexeme as String?;
+    } catch (_) {}
+    // analyzer 8.x alternative: nameToken.lexeme
+    try {
+      return d.nameToken.lexeme as String?;
+    } catch (_) {}
+    // analyzer 7.x: name.lexeme (Token)
+    try {
+      return d.name.lexeme as String?;
+    } catch (_) {}
+    // analyzer 7.x older: name as String directly
+    try {
+      final n = d.name;
+      if (n is String) {
+        return n;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static ClassElement? _classElement(ClassDeclaration declaration) {
+    try {
+      // analyzer 8.x path
+      final fragment = (declaration as dynamic).declaredFragment;
+      if (fragment != null) {
+        final el = (fragment as dynamic).element;
+        if (el is ClassElement) {
+          return el;
+        }
+      }
+    } catch (_) {}
+    try {
+      // analyzer 7.x path
+      final el = (declaration as dynamic).declaredElement;
+      if (el is ClassElement) {
+        return el;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   List<WidgetUsage> _visitWidgets(ResolvedUnitResult result) {
     final visitor = _ResolvedWidgetVisitor(result.lineInfo);
     result.unit.visitChildren(visitor);
@@ -324,7 +353,8 @@ class _ResolvedWidgetVisitor extends RecursiveAstVisitor<void> {
       source = source.substring(di + 1);
     }
     if (source.isNotEmpty) {
-      _record(source, node.argumentList.arguments, node.offset, node);
+      _record(
+          source, node.argumentList.arguments as dynamic, node.offset, node);
     }
     _ancestors.add(source);
     try {
@@ -338,7 +368,7 @@ class _ResolvedWidgetVisitor extends RecursiveAstVisitor<void> {
   void visitMethodInvocation(MethodInvocation node) {
     final name = node.methodName.name;
     if (node.realTarget == null && name.isNotEmpty && _isUpper(name[0])) {
-      _record(name, node.argumentList.arguments, node.offset, node);
+      _record(name, node.argumentList.arguments as dynamic, node.offset, node);
       _ancestors.add(name);
       try {
         super.visitMethodInvocation(node);
@@ -350,16 +380,22 @@ class _ResolvedWidgetVisitor extends RecursiveAstVisitor<void> {
     }
   }
 
-  void _record(String type, List<Expression> args, int offset, AstNode node) {
+  void _record(String type, dynamic args, int offset, AstNode node) {
     final namedArgs = <String, Expression>{};
     final positionalArgs = <Expression>[];
-    for (final arg in args) {
-      if (arg is NamedExpression) {
-        namedArgs[arg.name.label.name] = arg.expression;
-      } else {
+
+    for (final arg in args as Iterable) {
+      if (_isNamedArg(arg)) {
+        final name = _argName(arg);
+        final expr = _argExpression(arg);
+        if (name != null && expr != null) {
+          namedArgs[name] = expr;
+        }
+      } else if (arg is Expression) {
         positionalArgs.add(arg);
       }
     }
+
     final loc = _lineInfo.getLocation(offset);
     widgets.add(WidgetUsage(
       type: type,
@@ -371,6 +407,30 @@ class _ResolvedWidgetVisitor extends RecursiveAstVisitor<void> {
       offset: offset,
       node: node,
     ));
+  }
+
+  static bool _isNamedArg(dynamic arg) {
+    try {
+      return arg.name != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String? _argName(dynamic arg) {
+    try {
+      return arg.name.label.name as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Expression? _argExpression(dynamic arg) {
+    try {
+      return arg.expression as Expression?;
+    } catch (_) {
+      return null;
+    }
   }
 
   static bool _isUpper(String c) {
