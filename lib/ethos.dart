@@ -51,3 +51,6 @@ export 'src/analyzer/watch/watch_engine.dart';
 // Init
 export 'src/analyzer/init/widget_discovery.dart';
 export 'src/analyzer/init/ethos_yaml_generator.dart';
+
+// Vesion
+export 'src/version.dart';

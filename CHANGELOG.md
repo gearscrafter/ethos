@@ -1,3 +1,9 @@
+## 0.8.3
+
+- **`ethos --version`** — new flag (`--version` / `-V` / `ethos version`)
+  that prints the installed version and exits. Useful to confirm which version
+  is active after `dart pub global activate ethos`.
+
 ## 0.8.2
  
 - **`-p` is now optional** — all three subcommands default to the current

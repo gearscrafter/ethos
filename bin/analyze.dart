@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:args/args.dart';
 import 'package:ethos/ethos.dart';
+import 'package:ethos/src/update_checker.dart';
 
 /// Ethos CLI entry point.
 ///
@@ -10,35 +11,47 @@ import 'package:ethos/ethos.dart';
 ///   ethos init -p `<path>` [options]     — generate starter ethos.yaml
 ///   ethos watch -p `<path>` [options]    — watch for changes and re-analyze
 void main(List<String> arguments) async {
+  if (arguments.isNotEmpty &&
+      (arguments.first == '--version' ||
+          arguments.first == '-V' ||
+          arguments.first == 'version')) {
+    stdout.writeln('ethos $kEthosVersion');
+    return;
+  }
+
+  final updateChecker = UpdateChecker();
+  final fetchFuture = updateChecker.fetch();
+
   if (arguments.isNotEmpty && arguments.first == 'init') {
     await _runInit(arguments.sublist(1));
+    await fetchFuture;
+    updateChecker.printUpdateHintIfNeeded();
     return;
   }
 
   if (arguments.isNotEmpty && arguments.first == 'watch') {
     await _runWatch(arguments.sublist(1));
-    return;
+    return; // watch runs forever — no update hint
   }
 
-  await _runAnalyze(arguments);
+  await _runAnalyze(arguments, updateChecker, fetchFuture);
 }
 
-Future<void> _runAnalyze(List<String> arguments) async {
+Future<void> _runAnalyze(List<String> arguments, UpdateChecker updateChecker,
+    Future<void> fetchFuture) async {
   final parser = ArgParser()
     ..addOption('project-path',
         abbr: 'p',
         help: 'Path to Flutter project to analyze (default: current directory)')
     ..addOption('config',
-        abbr: 'c',
-        help: 'Path to an ethos.yaml (default: auto-detect).')
+        abbr: 'c', help: 'Path to an ethos.yaml (default: auto-detect).')
     ..addOption('report-type',
         abbr: 'r',
         help: 'Output format: human | json | markdown | coverage',
         defaultsTo: 'human',
         allowed: ['json', 'human', 'markdown', 'coverage'])
     ..addOption('output',
-        abbr: 'o',
-        help: 'Write report to this file instead of stdout')
+        abbr: 'o', help: 'Write report to this file instead of stdout')
     ..addFlag('deep',
         abbr: 'd',
         help: 'Deep analysis: resolves types and cross-file references.\n'
@@ -46,20 +59,31 @@ Future<void> _runAnalyze(List<String> arguments) async {
             'Falls back to standard mode automatically if the project is not ready.',
         defaultsTo: false)
     ..addFlag('verbose',
-        abbr: 'v', help: 'Print progress details (written to stderr)',
+        abbr: 'v',
+        help: 'Print progress details (written to stderr)',
         defaultsTo: false)
+    ..addFlag('version',
+        abbr: 'V', help: 'Print version and exit', negatable: false)
     ..addFlag('help', abbr: 'h', help: 'Show help message', negatable: false);
 
   try {
     final results = parser.parse(arguments);
-    if (results['help'] as bool) { _printAnalyzeHelp(parser); exit(0); }
+    if (results['help'] as bool) {
+      _printAnalyzeHelp(parser);
+      exit(0);
+    }
+    if (results['version'] as bool) {
+      stdout.writeln('ethos $kEthosVersion');
+      exit(0);
+    }
 
-    final projectPath = (results['project-path'] as String?) ?? Directory.current.path;
-    final configPath  = results['config'] as String?;
-    final reportType  = results['report-type'] as String;
-    final outputPath  = results['output'] as String?;
-    final deepMode    = results['deep'] as bool;
-    final verbose     = results['verbose'] as bool;
+    final projectPath =
+        (results['project-path'] as String?) ?? Directory.current.path;
+    final configPath = results['config'] as String?;
+    final reportType = results['report-type'] as String;
+    final outputPath = results['output'] as String?;
+    final deepMode = results['deep'] as bool;
+    final verbose = results['verbose'] as bool;
 
     if (verbose) {
       stderr.writeln('📋 Ethos — Accessibility Coverage Analyzer');
@@ -80,7 +104,8 @@ Future<void> _runAnalyze(List<String> arguments) async {
 
     if (deepMode) {
       final deepAnalyzer = await DeepAnalyzer.forProject(
-        projectPath, configPath: configPath,
+        projectPath,
+        configPath: configPath,
       );
 
       if (verbose) {
@@ -108,15 +133,24 @@ Future<void> _runAnalyze(List<String> arguments) async {
               inProgressLine = true;
             }
           case AnalysisRunningDetector(:final ruleTitle):
-            if (inProgressLine) { stderr.writeln(''); inProgressLine = false; }
+            if (inProgressLine) {
+              stderr.writeln('');
+              inProgressLine = false;
+            }
             stderr.writeln('   ✓ $ruleTitle');
           case AnalysisWarning(:final message):
-            if (inProgressLine) { stderr.writeln(''); inProgressLine = false; }
+            if (inProgressLine) {
+              stderr.writeln('');
+              inProgressLine = false;
+            }
             stderr.writeln('⚠️  $message');
           case AnalysisComplete():
             final completedReport = (event).report;
             final usedDeep = (event).usedDeepMode;
-            if (inProgressLine) { stderr.writeln(''); inProgressLine = false; }
+            if (inProgressLine) {
+              stderr.writeln('');
+              inProgressLine = false;
+            }
             stderr.writeln(usedDeep
                 ? '✅ Deep analysis complete'
                 : '✅ Analysis complete (fell back to standard mode)');
@@ -134,7 +168,8 @@ Future<void> _runAnalyze(List<String> arguments) async {
       late final CoverageAnalyzer analyzer;
       try {
         analyzer = await CoverageAnalyzer.forProject(
-          projectPath, configPath: configPath,
+          projectPath,
+          configPath: configPath,
         );
       } catch (e) {
         stderr.writeln('❌ Error loading spec: $e');
@@ -161,10 +196,14 @@ Future<void> _runAnalyze(List<String> arguments) async {
 
     String reportOutput;
     switch (reportType) {
-      case 'json':     reportOutput = report.toJsonString();
-      case 'markdown': reportOutput = _generateMarkdownReport(report);
-      case 'coverage': reportOutput = _generateCoverageReport(report);
-      default:         reportOutput = _generateHumanReport(report);
+      case 'json':
+        reportOutput = report.toJsonString();
+      case 'markdown':
+        reportOutput = _generateMarkdownReport(report);
+      case 'coverage':
+        reportOutput = _generateCoverageReport(report);
+      default:
+        reportOutput = _generateHumanReport(report);
     }
 
     if (outputPath != null) {
@@ -175,8 +214,12 @@ Future<void> _runAnalyze(List<String> arguments) async {
     }
 
     final hasCritical = report.coverage.values.any((c) => c.isCritical);
+    await fetchFuture;
+    updateChecker.printUpdateHintIfNeeded();
     if (hasCritical) {
-      if (verbose) { stderr.writeln('\n  Critical coverage issues detected'); }
+      if (verbose) {
+        stderr.writeln('\n  Critical coverage issues detected');
+      }
       exit(1);
     }
     exit(0);
@@ -203,16 +246,19 @@ Future<void> _runInit(List<String> arguments) async {
 
   try {
     final results = parser.parse(arguments);
-    if (results['help'] as bool) { _printInitHelp(parser); exit(0); }
+    if (results['help'] as bool) {
+      _printInitHelp(parser);
+      exit(0);
+    }
 
-    final projectPath = (results['project-path'] as String?) ?? Directory.current.path;
+    final projectPath =
+        (results['project-path'] as String?) ?? Directory.current.path;
     final sep = Platform.pathSeparator;
-    final outputPath = results['output'] as String? ??
-        '$projectPath${sep}ethos.yaml';
+    final outputPath =
+        results['output'] as String? ?? '$projectPath${sep}ethos.yaml';
 
     print('🔍 Scanning $projectPath for custom widgets and color tokens...');
 
-    // ── Scan project ──────────────────────────────────────────────────
     final dir = Directory(projectPath);
     if (!await dir.exists()) {
       stderr.writeln('❌ Project path not found: $projectPath');
@@ -221,15 +267,21 @@ Future<void> _runInit(List<String> arguments) async {
 
     final files = <ParsedFile>[];
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      if (entity is! File) { continue; }
+      if (entity is! File) {
+        continue;
+      }
       final path = entity.path;
-      if (!path.endsWith('.dart')) { continue; }
+      if (!path.endsWith('.dart')) {
+        continue;
+      }
       if (path.endsWith('.g.dart') ||
           path.endsWith('.freezed.dart') ||
           path.endsWith('.gr.dart') ||
           path.contains('${sep}generated$sep') ||
           path.contains('$sep.dart_tool$sep') ||
-          path.contains('${sep}build$sep')) { continue; }
+          path.contains('${sep}build$sep')) {
+        continue;
+      }
       try {
         final source = await entity.readAsString();
         files.add(parseDartFile(path, source));
@@ -255,8 +307,7 @@ Future<void> _runInit(List<String> arguments) async {
 
     final outputFile = File(outputPath);
     if (await outputFile.exists()) {
-      stdout.write(
-          '⚠️  $outputPath already exists. Overwrite? [y/N] ');
+      stdout.write('⚠️  $outputPath already exists. Overwrite? [y/N] ');
       final response = stdin.readLineSync()?.trim().toLowerCase() ?? '';
       if (response != 'y' && response != 'yes') {
         print('Cancelled. Existing ethos.yaml was not modified.');
@@ -264,11 +315,7 @@ Future<void> _runInit(List<String> arguments) async {
       }
     }
 
-    final yaml = EthosYamlGenerator.generate(
-      result,
-      projectPath: projectPath,
-    );
-
+    final yaml = EthosYamlGenerator.generate(result, projectPath: projectPath);
     await outputFile.writeAsString(yaml);
 
     print('✅ Generated: $outputPath');
@@ -293,9 +340,10 @@ Future<void> _runInit(List<String> arguments) async {
     print('Next steps:');
     print('  1. Open $outputPath');
     print('  2. Set role: for each widget_alias');
-    print('  3. Uncomment label_arg, size_guaranteed, keyboard_ready as needed');
+    print(
+        '  3. Uncomment label_arg, size_guaranteed, keyboard_ready as needed');
     print('  4. Fill in hex values under color_aliases');
-    print('  5. Run: ethos -p $projectPath -v');
+    print('  5. Run: ethos -v');
   } on FormatException catch (e) {
     stderr.writeln('❌ Invalid arguments: ${e.message}');
     stderr.writeln(parser.usage);
@@ -306,28 +354,24 @@ Future<void> _runInit(List<String> arguments) async {
   }
 }
 
-
 String _progressBar(int current, int total) {
   const width = 15;
   final filled = (current / total * width).round();
   return '[${'█' * filled}${'░' * (width - filled)}]';
 }
 
-
-const _reset  = '\x1B[0m';
-const _bold   = '\x1B[1m';
-const _red    = '\x1B[31m';
-const _green  = '\x1B[32m';
+const _reset = '\x1B[0m';
+const _bold = '\x1B[1m';
+const _red = '\x1B[31m';
+const _green = '\x1B[32m';
 const _yellow = '\x1B[33m';
-const _cyan   = '\x1B[36m';
-const _dim    = '\x1B[2m';
+const _cyan = '\x1B[36m';
+const _dim = '\x1B[2m';
 
 String _c(String text, String color) => '$color$text$_reset';
 String _b(String text) => '$_bold$text$_reset';
 
-bool _supportsAnsi() {
-  return stdout.hasTerminal;
-}
+bool _supportsAnsi() => stdout.hasTerminal;
 
 String _generateHumanReport(CoverageReport report) {
   final color = _supportsAnsi();
@@ -335,12 +379,12 @@ String _generateHumanReport(CoverageReport report) {
 
   final header = color
       ? '$_bold$_cyan╔════════════════════════════════════════════════╗$_reset\n'
-        '$_bold$_cyan║  Accessibility Coverage Report                 ║$_reset\n'
-        '$_bold$_cyan║  Spec v${report.specVersion}${''.padRight(41 - report.specVersion.length)}║$_reset'
-        '\n$_bold$_cyan╚════════════════════════════════════════════════╝$_reset'
+          '$_bold$_cyan║  Accessibility Coverage Report                 ║$_reset\n'
+          '$_bold$_cyan║  Spec v${report.specVersion}${''.padRight(41 - report.specVersion.length)}║$_reset'
+          '\n$_bold$_cyan╚════════════════════════════════════════════════╝$_reset'
       : '${'╔════════════════════════════════════════════════╗\n'
-        '║  Accessibility Coverage Report                 ║\n'
-        '║  Spec v${report.specVersion}'.padRight(49)}║\n╚════════════════════════════════════════════════╝';
+          '║  Accessibility Coverage Report                 ║\n'
+          '║  Spec v${report.specVersion}'.padRight(49)}║\n╚════════════════════════════════════════════════╝';
   buffer.writeln(header);
   buffer.writeln('');
 
@@ -350,7 +394,11 @@ String _generateHumanReport(CoverageReport report) {
   final pct = report.overallCoverage;
   final pctStr = '${pct.toStringAsFixed(2)}%';
   final pctColored = color
-      ? (pct >= 85 ? _c(pctStr, _green) : pct >= 70 ? _c(pctStr, _yellow) : _c(pctStr, _red))
+      ? (pct >= 85
+          ? _c(pctStr, _green)
+          : pct >= 70
+              ? _c(pctStr, _yellow)
+              : _c(pctStr, _red))
       : pctStr;
 
   final level = report.complianceLevel;
@@ -363,7 +411,8 @@ String _generateHumanReport(CoverageReport report) {
   buffer.writeln('Overall Coverage: $pctColored');
   buffer.writeln('Compliance Level: ${color ? _b(levelColored) : level}');
   buffer.writeln('Project: ${report.projectPath}');
-  buffer.writeln('Analyzed: ${color ? _c(report.timestamp.toIso8601String(), _dim) : report.timestamp.toIso8601String()}');
+  buffer.writeln(
+      'Analyzed: ${color ? _c(report.timestamp.toIso8601String(), _dim) : report.timestamp.toIso8601String()}');
   buffer.writeln('');
 
   buffer.writeln(color ? _b('📋 Coverage by Rule') : '📋 Coverage by Rule');
@@ -372,22 +421,28 @@ String _generateHumanReport(CoverageReport report) {
   for (final c in report.coverage.values) {
     final isCritical = c.isCritical;
     final noData = c.total == 0;
-
     final icon = isCritical ? '⚠️ ' : (noData ? 'ℹ️ ' : '✅');
     final status = isCritical ? 'CRITICAL' : (noData ? 'NO DATA' : 'OK');
-
     final titleStr = color
-        ? (isCritical ? _c(c.title, _red) : noData ? _c(c.title, _cyan) : _c(c.title, _green))
+        ? (isCritical
+            ? _c(c.title, _red)
+            : noData
+                ? _c(c.title, _cyan)
+                : _c(c.title, _green))
         : c.title;
     final statusStr = color
-        ? (isCritical ? _c('[$status]', _red) : noData ? _c('[$status]', _cyan) : _c('[$status]', _green))
+        ? (isCritical
+            ? _c('[$status]', _red)
+            : noData
+                ? _c('[$status]', _cyan)
+                : _c('[$status]', _green))
         : '[$status]';
-    final pctRuleStr = '${c.percentage.toStringAsFixed(2)}% (${c.matched}/${c.total})';
-
     buffer.writeln('$icon ${color ? _b(titleStr) : titleStr}');
-    buffer.writeln('   Coverage: $pctRuleStr $statusStr');
+    buffer.writeln(
+        '   Coverage: ${c.percentage.toStringAsFixed(2)}% (${c.matched}/${c.total}) $statusStr');
     if (c.indeterminate > 0) {
-      final indStr = 'ⓘ  ${c.indeterminate} indeterminate (value resolved at runtime — not counted)';
+      final indStr =
+          'ⓘ  ${c.indeterminate} indeterminate (value resolved at runtime — not counted)';
       buffer.writeln('   ${color ? _c(indStr, _dim) : indStr}');
     }
     buffer.writeln('');
@@ -395,29 +450,36 @@ String _generateHumanReport(CoverageReport report) {
 
   final allFindings = [for (final c in report.coverage.values) ...c.findings];
   if (allFindings.isNotEmpty) {
-    buffer.writeln(color ? _b('🔎 Findings (${allFindings.length})') : '🔎 Findings (${allFindings.length})');
+    buffer.writeln(color
+        ? _b('🔎 Findings (${allFindings.length})')
+        : '🔎 Findings (${allFindings.length})');
     buffer.writeln('─' * 50);
     for (final f in allFindings) {
       final isIndet = f.severity == FindingSeverity.indeterminate;
       if (isIndet) {
         final tag = color ? _c('ⓘ INDETERMINATE', _cyan) : 'ⓘ INDETERMINATE';
-        final loc = color ? _c('${f.filePath}:${f.line}:${f.column}', _dim) : '${f.filePath}:${f.line}:${f.column}';
+        final loc = color
+            ? _c('${f.filePath}:${f.line}:${f.column}', _dim)
+            : '${f.filePath}:${f.line}:${f.column}';
         buffer.writeln('$tag $loc');
-        buffer.writeln('   ${color ? _c(f.widgetType, _cyan) : f.widgetType} — ${f.message}');
+        buffer.writeln(
+            '   ${color ? _c(f.widgetType, _cyan) : f.widgetType} — ${f.message}');
       } else {
         final tag = color ? _c('✗ FAIL', _red) : '✗ FAIL';
         final loc = color
             ? '${_c(f.filePath, _dim)}${_c(':${f.line}:${f.column}', _yellow)}'
             : '${f.filePath}:${f.line}:${f.column}';
         buffer.writeln('$tag  $loc');
-        buffer.writeln('   ${color ? _b(_c(f.widgetType, _red)) : f.widgetType} — ${f.message}');
+        buffer.writeln(
+            '   ${color ? _b(_c(f.widgetType, _red)) : f.widgetType} — ${f.message}');
       }
     }
     buffer.writeln('');
   }
 
   if (report.issues.isNotEmpty) {
-    buffer.writeln(color ? _c('⚠️  Engine Issues', _yellow) : '⚠️  Engine Issues');
+    buffer.writeln(
+        color ? _c('⚠️  Engine Issues', _yellow) : '⚠️  Engine Issues');
     buffer.writeln('─' * 50);
     for (final issue in report.issues) {
       buffer.writeln('• ${color ? _c(issue, _yellow) : issue}');
@@ -437,7 +499,8 @@ String _generateMarkdownReport(CoverageReport report) {
   buffer.writeln('');
   buffer.writeln('## Summary');
   buffer.writeln('');
-  buffer.writeln('- **Overall Coverage:** ${report.overallCoverage.toStringAsFixed(2)}%');
+  buffer.writeln(
+      '- **Overall Coverage:** ${report.overallCoverage.toStringAsFixed(2)}%');
   buffer.writeln('- **Compliance Level:** `${report.complianceLevel}`');
   buffer.writeln('');
   buffer.writeln('## Coverage by Rule');
@@ -445,7 +508,8 @@ String _generateMarkdownReport(CoverageReport report) {
   buffer.writeln('| Rule | Coverage | Indeterminate | Status |');
   buffer.writeln('|------|----------|---------------|--------|');
   for (final c in report.coverage.values) {
-    final status = c.isCritical ? '⚠️ CRITICAL' : (c.total == 0 ? 'ℹ️ NO DATA' : '✅ OK');
+    final status =
+        c.isCritical ? '⚠️ CRITICAL' : (c.total == 0 ? 'ℹ️ NO DATA' : '✅ OK');
     final ind = c.indeterminate > 0 ? '${c.indeterminate}' : '—';
     buffer.writeln('| ${c.title} | ${c.percentage.toStringAsFixed(2)}% '
         '(${c.matched}/${c.total}) | $ind | $status |');
@@ -466,27 +530,34 @@ String _generateMarkdownReport(CoverageReport report) {
 
 String _generateCoverageReport(CoverageReport report) {
   final buffer = StringBuffer();
-  buffer.writeln('Overall Coverage: **${report.overallCoverage.toStringAsFixed(2)}%**');
+  buffer.writeln(
+      'Overall Coverage: **${report.overallCoverage.toStringAsFixed(2)}%**');
   buffer.writeln('Compliance Level: **${report.complianceLevel}**');
   buffer.writeln('');
   for (final c in report.coverage.values) {
     buffer.writeln('### ${c.title}');
     buffer.writeln('- Coverage: ${c.percentage.toStringAsFixed(2)}%');
     buffer.writeln('- Matched: ${c.matched}/${c.total}');
-    if (c.indeterminate > 0) { buffer.writeln('- Indeterminate: ${c.indeterminate}'); }
-    buffer.writeln('- Status: ${c.isCritical ? "CRITICAL" : (c.total == 0 ? "NO DATA" : "OK")}');
+    if (c.indeterminate > 0) {
+      buffer.writeln('- Indeterminate: ${c.indeterminate}');
+    }
+    buffer.writeln(
+        '- Status: ${c.isCritical ? "CRITICAL" : (c.total == 0 ? "NO DATA" : "OK")}');
     buffer.writeln('');
   }
   return buffer.toString();
 }
 
 void _printAnalyzeHelp(ArgParser parser) {
-  print('Ethos — Accessibility Coverage Analyzer');
+  print('Ethos $kEthosVersion — Accessibility Coverage Analyzer');
   print('');
-  print('Usage: ethos [options]                     (analyzes current directory)');
+  print(
+      'Usage: ethos [options]                     (analyzes current directory)');
   print('       ethos -p <project-path> [options]');
-  print('       ethos init                          (generate starter ethos.yaml)');
+  print(
+      '       ethos init                          (generate starter ethos.yaml)');
   print('       ethos watch                         (watch for changes)');
+  print('       ethos --version                     (print version)');
   print('');
   print('Examples:');
   print('  ethos                        # analyze current directory');
@@ -509,9 +580,10 @@ void _printInitHelp(ArgParser parser) {
   print('Scans your project for custom widgets and color expressions,');
   print('then generates an ethos.yaml with the most-used ones pre-filled.');
   print('');
-  print('Usage: ethos init -p <project-path> [options]');
+  print('Usage: ethos init [options]');
   print('');
   print('Examples:');
+  print('  ethos init');
   print('  ethos init -p ./my_app');
   print('  ethos init -p ./my_app -o config/ethos.yaml');
   print('');
@@ -525,8 +597,7 @@ Future<void> _runWatch(List<String> arguments) async {
         abbr: 'p',
         help: 'Path to Flutter project to watch (default: current directory)')
     ..addOption('config',
-        abbr: 'c',
-        help: 'Path to a custom ethos.yaml (default: auto-detect).')
+        abbr: 'c', help: 'Path to a custom ethos.yaml (default: auto-detect).')
     ..addFlag('deep',
         abbr: 'd',
         help: 'Use deep analysis on each change (slower, more precise).',
@@ -535,12 +606,16 @@ Future<void> _runWatch(List<String> arguments) async {
 
   try {
     final results = parser.parse(arguments);
-    if (results['help'] as bool) { _printWatchHelp(parser); exit(0); }
+    if (results['help'] as bool) {
+      _printWatchHelp(parser);
+      exit(0);
+    }
 
-    final projectPath = (results['project-path'] as String?) ?? Directory.current.path;
-    final configPath  = results['config'] as String?;
-    final deepMode    = results['deep'] as bool;
-    final sep         = Platform.pathSeparator;
+    final projectPath =
+        (results['project-path'] as String?) ?? Directory.current.path;
+    final configPath = results['config'] as String?;
+    final deepMode = results['deep'] as bool;
+    final sep = Platform.pathSeparator;
 
     stderr.writeln('👁  Ethos Watch');
     stderr.writeln('  Project: $projectPath');
@@ -569,7 +644,6 @@ Future<void> _runWatch(List<String> arguments) async {
 
     _printWatchReport(initialReport, diff: null, changedFile: null);
 
-    // Watch lib/, test/, and example/ if they exist.
     final watchDirs = ['lib', 'test', 'example']
         .map((d) => Directory('$projectPath$sep$d'))
         .where((d) => d.existsSync())
@@ -580,7 +654,6 @@ Future<void> _runWatch(List<String> arguments) async {
       exit(1);
     }
 
-    // Debounce: ignore rapid successive events on the same file.
     final Map<String, DateTime> lastEvent = {};
     const debounce = Duration(milliseconds: 300);
 
@@ -593,9 +666,9 @@ Future<void> _runWatch(List<String> arguments) async {
 
     await for (final event in controller.stream) {
       final path = event.path;
-
-      // Only process .dart files, skip generated files.
-      if (!path.endsWith('.dart')) { continue; }
+      if (!path.endsWith('.dart')) {
+        continue;
+      }
       if (path.endsWith('.g.dart') ||
           path.endsWith('.freezed.dart') ||
           path.endsWith('.gr.dart') ||
@@ -605,10 +678,11 @@ Future<void> _runWatch(List<String> arguments) async {
         continue;
       }
 
-      // Debounce.
       final now = DateTime.now();
       final last = lastEvent[path];
-      if (last != null && now.difference(last) < debounce) { continue; }
+      if (last != null && now.difference(last) < debounce) {
+        continue;
+      }
       lastEvent[path] = now;
 
       final fileName = path.split(sep).last;
@@ -645,9 +719,7 @@ void _printWatchReport(
   required ReportDiff? diff,
   required String? changedFile,
 }) {
-  // Overall summary line.
-  final overallStr =
-      report.overallCoverage.toStringAsFixed(1).padLeft(5);
+  final overallStr = report.overallCoverage.toStringAsFixed(1).padLeft(5);
   final deltaStr = diff != null && diff.overallDelta.abs() > 0.01
       ? _deltaStr(diff.overallDelta)
       : '';
@@ -657,22 +729,15 @@ void _printWatchReport(
   stdout.writeln('');
 
   for (final c in report.coverage.values) {
-    final icon =
-        c.isCritical ? '⚠️ ' : (c.total == 0 ? 'ℹ️ ' : '✅');
-    final pct =
-        '${c.percentage.toStringAsFixed(1)}%'.padLeft(6);
-    final counts =
-        c.total > 0 ? '(${c.matched}/${c.total})' : '     ';
+    final icon = c.isCritical ? '⚠️ ' : (c.total == 0 ? 'ℹ️ ' : '✅');
+    final pct = '${c.percentage.toStringAsFixed(1)}%'.padLeft(6);
+    final counts = c.total > 0 ? '(${c.matched}/${c.total})' : '     ';
     final ruleDelta = diff?.ruleDelta[c.ruleId];
     final ruleTag = ruleDelta != null && ruleDelta.abs() > 0.01
         ? '  ${_deltaStr(ruleDelta)}'
         : '';
-    final ind = c.indeterminate > 0
-        ? '  ⓘ ${c.indeterminate}'
-        : '';
-
-    stdout.writeln(
-        '$icon ${c.title.padRight(35)} $pct $counts$ruleTag$ind');
+    final ind = c.indeterminate > 0 ? '  ⓘ ${c.indeterminate}' : '';
+    stdout.writeln('$icon ${c.title.padRight(35)} $pct $counts$ruleTag$ind');
   }
 
   if (diff != null) {
@@ -701,11 +766,8 @@ void _printWatchReport(
       stdout.writeln('');
       stdout.writeln('🔎 Findings in $changedFile:');
       for (final f in fileFindings) {
-        final tag = f.severity == FindingSeverity.indeterminate
-            ? 'ⓘ'
-            : '✗';
-        stdout.writeln(
-            '  $tag line ${f.line} — ${f.widgetType}: ${f.message}');
+        final tag = f.severity == FindingSeverity.indeterminate ? 'ⓘ' : '✗';
+        stdout.writeln('  $tag line ${f.line} — ${f.widgetType}: ${f.message}');
       }
     }
   }
@@ -719,8 +781,7 @@ String _deltaStr(double delta) {
   return '$sign ${delta.abs().toStringAsFixed(1)}%';
 }
 
-String _timeString(DateTime dt) =>
-    '${dt.hour.toString().padLeft(2, '0')}:'
+String _timeString(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:'
     '${dt.minute.toString().padLeft(2, '0')}:'
     '${dt.second.toString().padLeft(2, '0')}';
 
@@ -730,11 +791,12 @@ void _printWatchHelp(ArgParser parser) {
   print('Performs an initial full scan, then re-analyzes only the');
   print('file that changed. Prints the full report after each change.');
   print('');
-  print('Usage: ethos watch -p <project-path> [options]');
+  print('Usage: ethos watch [options]');
   print('');
   print('Examples:');
+  print('  ethos watch');
+  print('  ethos watch --deep');
   print('  ethos watch -p ./my_app');
-  print('  ethos watch -p ./my_app --deep');
   print('');
   print('Options:');
   print(parser.usage);

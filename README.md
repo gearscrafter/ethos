@@ -59,6 +59,9 @@ Compliance Level: NONE
 ```bash
 dart pub global activate ethos
 
+# Verify installation
+ethos --version
+
 # From inside your Flutter project:
 cd ./my_flutter_app
 ethos
@@ -99,6 +102,9 @@ dart run example/main.dart
 
 # Install locally as a global command
 dart pub global activate --source path .
+
+# Verify installation
+ethos --version
 
 # Analyze from inside a Flutter project — no -p needed
 cd ./my_flutter_app
