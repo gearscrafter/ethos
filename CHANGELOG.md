@@ -1,3 +1,8 @@
+## 0.8.1
+
+- Fixed `_ResolvedWidgetVisitor` in `deep_analyzer.dart` to match the fixes
+  already applied to `widget_visitor.dart` in 0.8.0.
+
 ## 0.8.0
  
 - **Flutter test integration** — new `package:ethos/ethos_test.dart` barrel

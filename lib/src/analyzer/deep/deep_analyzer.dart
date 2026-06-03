@@ -98,7 +98,7 @@ class DeepAnalyzer {
           resolvedFiles.add(ResolvedFile(
             path: file.path,
             widgets: widgets,
-            hasErrors: result.diagnostics.isNotEmpty,
+            hasErrors: _hasResultErrors(result),
             classElements: classElements,
             resolvedUnit: result.unit,
           ));
@@ -299,6 +299,16 @@ class DeepAnalyzer {
     return null;
   }
 
+  static bool _hasResultErrors(dynamic result) {
+    try {
+      return (result.diagnostics as List).isNotEmpty;
+    } catch (_) {}
+    try {
+      return (result.errors as List).isNotEmpty;
+    } catch (_) {}
+    return false;
+  }
+
   List<WidgetUsage> _visitWidgets(ResolvedUnitResult result) {
     final visitor = _ResolvedWidgetVisitor(result.lineInfo);
     result.unit.visitChildren(visitor);
@@ -353,6 +363,7 @@ class _ResolvedWidgetVisitor extends RecursiveAstVisitor<void> {
       source = source.substring(di + 1);
     }
     if (source.isNotEmpty) {
+      // Pass as dynamic to avoid NodeList<Argument> vs List<Expression> error.
       _record(
           source, node.argumentList.arguments as dynamic, node.offset, node);
     }
@@ -374,6 +385,20 @@ class _ResolvedWidgetVisitor extends RecursiveAstVisitor<void> {
         super.visitMethodInvocation(node);
       } finally {
         _ancestors.removeLast();
+      }
+    } else if (node.realTarget is SimpleIdentifier) {
+      final targetName = (node.realTarget as SimpleIdentifier).name;
+      if (targetName.isNotEmpty && _isUpper(targetName[0])) {
+        _record(targetName, node.argumentList.arguments as dynamic, node.offset,
+            node);
+        _ancestors.add(targetName);
+        try {
+          super.visitMethodInvocation(node);
+        } finally {
+          _ancestors.removeLast();
+        }
+      } else {
+        super.visitMethodInvocation(node);
       }
     } else {
       super.visitMethodInvocation(node);
@@ -419,13 +444,33 @@ class _ResolvedWidgetVisitor extends RecursiveAstVisitor<void> {
 
   static String? _argName(dynamic arg) {
     try {
-      return arg.name.label.name as String?;
+      final n = arg.name;
+      if (n == null) {
+        return null;
+      }
+      final s = n.toString();
+      if (s.isNotEmpty &&
+          !s.contains(' ') &&
+          !s.contains('.') &&
+          !s.contains(':')) {
+        return s;
+      }
+      try {
+        return n.label?.name as String?;
+      } catch (_) {}
+      return null;
     } catch (_) {
       return null;
     }
   }
 
   static Expression? _argExpression(dynamic arg) {
+    try {
+      final e = arg.argumentExpression;
+      if (e is Expression) {
+        return e;
+      }
+    } catch (_) {}
     try {
       return arg.expression as Expression?;
     } catch (_) {
