@@ -55,21 +55,8 @@ class DeepAnalyzer {
 
   /// Runs the deep analysis, emitting [AnalysisProgress] events.
   ///
-  /// Always ends with [AnalysisComplete] — never throws.
   Stream<AnalysisProgress> analyze() async* {
     yield const AnalysisPreparing();
-
-    if (!await _isProjectReady()) {
-      yield AnalysisWarning(
-        message: 'Project not ready for deep analysis — '
-            '`$projectPath${Platform.pathSeparator}.dart_tool'
-            '${Platform.pathSeparator}package_config.json` not found.\n'
-            'Run `flutter pub get` first. '
-            'Falling back to standard analysis mode.',
-      );
-      yield* _fallback();
-      return;
-    }
 
     final dartFiles = await _findDartFiles();
     if (dartFiles.isEmpty) {
@@ -88,7 +75,9 @@ class DeepAnalyzer {
       );
     } catch (e) {
       yield AnalysisWarning(
-        message: 'Failed to build analysis context: $e\n'
+        message: 'Could not build analysis context: $e\n'
+            'Make sure `flutter pub get` (or `dart pub get`) has been run '
+            'in $projectPath.\n'
             'Falling back to standard analysis mode.',
       );
       yield* _fallback();
@@ -230,17 +219,6 @@ class DeepAnalyzer {
     yield AnalysisComplete(report: report, usedDeepMode: false);
   }
 
-  Future<bool> _isProjectReady() async {
-    final absoluteProjectDir = Directory(projectPath).absolute;
-    final sep = Platform.pathSeparator;
-
-    final pubspec = File('${absoluteProjectDir.path}${sep}pubspec.yaml');
-    final packageConfig = File(
-        '${absoluteProjectDir.path}$sep.dart_tool${sep}package_config.json');
-
-    return pubspec.existsSync() && packageConfig.existsSync();
-  }
-
   Future<List<File>> _findDartFiles() async {
     final dir = Directory(projectPath);
     final files = <File>[];
@@ -270,14 +248,19 @@ class DeepAnalyzer {
     return files;
   }
 
-  /// Extracts resolved [ClassElement]s from a compilation unit.
   Map<String, ClassElement> _extractClasses(CompilationUnit unit) {
     final result = <String, ClassElement>{};
     for (final declaration in unit.declarations) {
       if (declaration is ClassDeclaration) {
-        final element = declaration.declaredFragment?.element;
-        if (element != null && element.name != null) {
-          result[element.name!] = element;
+        final name = declaration.name.lexeme;
+        if (name.isNotEmpty) {
+          try {
+            final fragment = declaration.declaredFragment;
+            if (fragment != null) {
+              final el = fragment.element;
+              result[name] = el;
+            }
+          } catch (_) {}
         }
       }
     }

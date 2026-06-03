@@ -1,23 +1,27 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:args/args.dart';
 import 'package:ethos/ethos.dart';
 
 /// Ethos CLI entry point.
 ///
-/// Supports two subcommands:
-///   ethos -p <path> [options]          — run accessibility analysis
-///   ethos init -p <path> [options]     — generate starter ethos.yaml
+/// Supports three subcommands:
+///   ethos -p `<path>` [options]          — run accessibility analysis
+///   ethos init -p `<path>` [options]     — generate starter ethos.yaml
+///   ethos watch -p `<path>` [options]    — watch for changes and re-analyze
 void main(List<String> arguments) async {
-  // Check for 'init' subcommand as first argument.
   if (arguments.isNotEmpty && arguments.first == 'init') {
     await _runInit(arguments.sublist(1));
     return;
   }
 
+  if (arguments.isNotEmpty && arguments.first == 'watch') {
+    await _runWatch(arguments.sublist(1));
+    return;
+  }
+
   await _runAnalyze(arguments);
 }
-
-// ─── analyze ─────────────────────────────────────────────────────────────────
 
 Future<void> _runAnalyze(List<String> arguments) async {
   final parser = ArgParser()
@@ -82,7 +86,7 @@ Future<void> _runAnalyze(List<String> arguments) async {
       );
 
       if (verbose) {
-        stderr.writeln('✅ Spec v${deepAnalyzer.spec.version} '
+        stderr.writeln(' Spec v${deepAnalyzer.spec.version} '
             '(${deepAnalyzer.spec.rules.length} rules, '
             '${deepAnalyzer.spec.widgetAliases.length} aliases)');
       }
@@ -125,8 +129,8 @@ Future<void> _runAnalyze(List<String> arguments) async {
               inProgressLine = false;
             }
             stderr.writeln(usedDeep
-                ? '✅ Deep analysis complete'
-                : '✅ Analysis complete (fell back to standard mode)');
+                ? ' Deep analysis complete'
+                : ' Analysis complete (fell back to standard mode)');
             stderr.writeln('');
             reportHolder = completedReport;
         }
@@ -145,12 +149,12 @@ Future<void> _runAnalyze(List<String> arguments) async {
           configPath: configPath,
         );
       } catch (e) {
-        stderr.writeln('❌ Error loading spec: $e');
+        stderr.writeln(' Error loading spec: $e');
         exit(1);
       }
 
       if (verbose) {
-        stderr.writeln('✅ Spec v${analyzer.spec.version} '
+        stderr.writeln(' Spec v${analyzer.spec.version} '
             '(${analyzer.spec.rules.length} rules, '
             '${analyzer.spec.widgetAliases.length} aliases)');
         stderr.writeln(
@@ -162,7 +166,7 @@ Future<void> _runAnalyze(List<String> arguments) async {
 
       if (verbose) {
         stderr.writeln(
-            '✅ Analysis complete (${report.coverage.length} rules evaluated)');
+            ' Analysis complete (${report.coverage.length} rules evaluated)');
         stderr.writeln('');
       }
     }
@@ -181,7 +185,7 @@ Future<void> _runAnalyze(List<String> arguments) async {
 
     if (outputPath != null) {
       await File(outputPath).writeAsString(reportOutput);
-      stderr.writeln('✅ Report saved to: $outputPath');
+      stderr.writeln(' Report saved to: $outputPath');
     } else {
       stdout.writeln(reportOutput);
     }
@@ -189,7 +193,7 @@ Future<void> _runAnalyze(List<String> arguments) async {
     final hasCritical = report.coverage.values.any((c) => c.isCritical);
     if (hasCritical) {
       if (verbose) {
-        stderr.writeln('\n⚠️  Critical coverage issues detected');
+        stderr.writeln('\n  Critical coverage issues detected');
       }
       exit(1);
     }
@@ -230,7 +234,7 @@ Future<void> _runInit(List<String> arguments) async {
 
     final dir = Directory(projectPath);
     if (!await dir.exists()) {
-      stderr.writeln('❌ Project path not found: $projectPath');
+      stderr.writeln(' Project path not found: $projectPath');
       exit(1);
     }
 
@@ -263,7 +267,7 @@ Future<void> _runInit(List<String> arguments) async {
 
     if (result.isEmpty) {
       print('');
-      print('ℹ️  No custom widgets or color expressions found '
+      print('  No custom widgets or color expressions found '
           '(threshold: ${WidgetDiscovery.minUsages}+ uses).');
       print('   Your project uses only standard Flutter/Material widgets.');
       print('   Ethos can already analyze it without any configuration.');
@@ -276,7 +280,7 @@ Future<void> _runInit(List<String> arguments) async {
 
     final outputFile = File(outputPath);
     if (await outputFile.exists()) {
-      stdout.write('⚠️  $outputPath already exists. Overwrite? [y/N] ');
+      stdout.write('  $outputPath already exists. Overwrite? [y/N] ');
       final response = stdin.readLineSync()?.trim().toLowerCase() ?? '';
       if (response != 'y' && response != 'yes') {
         print('Cancelled. Existing ethos.yaml was not modified.');
@@ -291,7 +295,7 @@ Future<void> _runInit(List<String> arguments) async {
 
     await outputFile.writeAsString(yaml);
 
-    print('✅ Generated: $outputPath');
+    print(' Generated: $outputPath');
     print('');
 
     if (result.totalWidgets > 0) {
@@ -474,6 +478,223 @@ void _printInitHelp(ArgParser parser) {
   print('Examples:');
   print('  ethos init -p ./my_app');
   print('  ethos init -p ./my_app -o config/ethos.yaml');
+  print('');
+  print('Options:');
+  print(parser.usage);
+}
+
+Future<void> _runWatch(List<String> arguments) async {
+  final parser = ArgParser()
+    ..addOption('project-path',
+        abbr: 'p', help: 'Path to Flutter project to watch', mandatory: true)
+    ..addOption('config',
+        abbr: 'c', help: 'Path to a custom ethos.yaml (default: auto-detect).')
+    ..addFlag('deep',
+        abbr: 'd',
+        help: 'Use deep analysis on each change (slower, more precise).',
+        defaultsTo: false)
+    ..addFlag('help', abbr: 'h', help: 'Show help', negatable: false);
+
+  try {
+    final results = parser.parse(arguments);
+    if (results['help'] as bool) {
+      _printWatchHelp(parser);
+      exit(0);
+    }
+
+    final projectPath = results['project-path'] as String;
+    final configPath = results['config'] as String?;
+    final deepMode = results['deep'] as bool;
+    final sep = Platform.pathSeparator;
+
+    stderr.writeln('👁  Ethos Watch');
+    stderr.writeln('  Project: $projectPath');
+    stderr.writeln('  Mode: ${deepMode ? "deep 🔬" : "standard"}');
+    stderr.writeln('  Watching: lib/, test/, example/');
+    stderr.writeln('  Press Ctrl+C to stop.');
+    stderr.writeln('');
+
+    stderr.write('⏳ Initial scan...');
+    final engine = await WatchEngine.forProject(
+      projectPath,
+      configPath: configPath,
+      deepMode: deepMode,
+    );
+
+    final initialReport = await engine.initialScan(
+      onProgress: (current, total, path) {
+        stderr.write('\r⏳ Scanning [$current/$total] '
+            '${path.split(sep).last}          ');
+      },
+    );
+
+    stderr.writeln('\r✅ Initial scan complete '
+        '(${engine.cachedFileCount} files)          ');
+    stderr.writeln('');
+
+    _printWatchReport(initialReport, diff: null, changedFile: null);
+
+    // ── File watcher ────────────────────────────────────────────────────
+    // Watch lib/, test/, and example/ if they exist.
+    final watchDirs = ['lib', 'test', 'example']
+        .map((d) => Directory('$projectPath$sep$d'))
+        .where((d) => d.existsSync())
+        .toList();
+
+    if (watchDirs.isEmpty) {
+      stderr.writeln('❌ No lib/, test/, or example/ found in $projectPath.');
+      exit(1);
+    }
+
+    // Debounce: ignore rapid successive events on the same file.
+    final Map<String, DateTime> lastEvent = {};
+    const debounce = Duration(milliseconds: 300);
+
+    final controller = StreamController<FileSystemEvent>();
+    for (final dir in watchDirs) {
+      dir
+          .watch(events: FileSystemEvent.all, recursive: true)
+          .listen(controller.add, onError: (_) {});
+    }
+
+    await for (final event in controller.stream) {
+      final path = event.path;
+
+      // Only process .dart files, skip generated files.
+      if (!path.endsWith('.dart')) {
+        continue;
+      }
+      if (path.endsWith('.g.dart') ||
+          path.endsWith('.freezed.dart') ||
+          path.endsWith('.gr.dart') ||
+          path.contains('${sep}generated$sep') ||
+          path.contains('$sep.dart_tool$sep') ||
+          path.contains('${sep}build$sep')) {
+        continue;
+      }
+
+      // Debounce.
+      final now = DateTime.now();
+      final last = lastEvent[path];
+      if (last != null && now.difference(last) < debounce) {
+        continue;
+      }
+      lastEvent[path] = now;
+
+      final fileName = path.split(sep).last;
+      final timeStr = _timeString(now);
+
+      stderr.writeln('');
+      stderr.writeln('─' * 50);
+      stderr.writeln('🔄  $fileName changed ($timeStr)');
+      stderr.writeln('─' * 50);
+      stderr.writeln('');
+      stderr.write('⏳ Re-analyzing...');
+
+      try {
+        final (newReport, diff) = await engine.reanalyzeFile(path);
+        stderr.writeln('\r Done                    ');
+        stderr.writeln('');
+        _printWatchReport(newReport, diff: diff, changedFile: fileName);
+      } catch (e) {
+        stderr.writeln('\r❌ Error: $e');
+      }
+    }
+  } on FormatException catch (e) {
+    stderr.writeln('❌ Invalid arguments: ${e.message}');
+    stderr.writeln(parser.usage);
+    exit(1);
+  } catch (e) {
+    stderr.writeln('❌ Error: $e');
+    exit(1);
+  }
+}
+
+void _printWatchReport(
+  CoverageReport report, {
+  required ReportDiff? diff,
+  required String? changedFile,
+}) {
+  // Overall summary line.
+  final overallStr = report.overallCoverage.toStringAsFixed(1).padLeft(5);
+  final deltaStr = diff != null && diff.overallDelta.abs() > 0.01
+      ? _deltaStr(diff.overallDelta)
+      : '';
+
+  stdout.writeln('📊 Overall: $overallStr%  $deltaStr'
+      ' · Compliance: ${report.complianceLevel}');
+  stdout.writeln('');
+
+  // Per-rule compact table.
+  for (final c in report.coverage.values) {
+    final icon = c.isCritical ? '⚠️ ' : (c.total == 0 ? 'ℹ️ ' : '✅');
+    final pct = '${c.percentage.toStringAsFixed(1)}%'.padLeft(6);
+    final counts = c.total > 0 ? '(${c.matched}/${c.total})' : '     ';
+    final ruleDelta = diff?.ruleDelta[c.ruleId];
+    final ruleTag = ruleDelta != null && ruleDelta.abs() > 0.01
+        ? '  ${_deltaStr(ruleDelta)}'
+        : '';
+    final ind = c.indeterminate > 0 ? '  ⓘ ${c.indeterminate}' : '';
+
+    stdout.writeln('$icon ${c.title.padRight(35)} $pct $counts$ruleTag$ind');
+  }
+
+  if (diff != null) {
+    if (diff.newCritical.isNotEmpty) {
+      stdout.writeln('');
+      stdout.writeln('🔴 Went critical:');
+      for (final id in diff.newCritical) {
+        stdout.writeln('   • $id');
+      }
+    }
+    if (diff.resolvedCritical.isNotEmpty) {
+      stdout.writeln('');
+      stdout.writeln('🟢 No longer critical:');
+      for (final id in diff.resolvedCritical) {
+        stdout.writeln('   • $id');
+      }
+    }
+  }
+
+  if (changedFile != null) {
+    final fileFindings = [
+      for (final c in report.coverage.values)
+        ...c.findings.where((f) => f.filePath.endsWith(changedFile)),
+    ];
+    if (fileFindings.isNotEmpty) {
+      stdout.writeln('');
+      stdout.writeln('🔎 Findings in $changedFile:');
+      for (final f in fileFindings) {
+        final tag = f.severity == FindingSeverity.indeterminate ? 'ⓘ' : '✗';
+        stdout.writeln('  $tag line ${f.line} — ${f.widgetType}: ${f.message}');
+      }
+    }
+  }
+
+  stdout.writeln('');
+  stdout.writeln('Watching for changes... (Ctrl+C to stop)');
+}
+
+String _deltaStr(double delta) {
+  final sign = delta >= 0 ? '▲' : '▼';
+  return '$sign ${delta.abs().toStringAsFixed(1)}%';
+}
+
+String _timeString(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:'
+    '${dt.minute.toString().padLeft(2, '0')}:'
+    '${dt.second.toString().padLeft(2, '0')}';
+
+void _printWatchHelp(ArgParser parser) {
+  print('Ethos watch — Watch for changes and re-analyze on save');
+  print('');
+  print('Performs an initial full scan, then re-analyzes only the');
+  print('file that changed. Prints the full report after each change.');
+  print('');
+  print('Usage: ethos watch -p <project-path> [options]');
+  print('');
+  print('Examples:');
+  print('  ethos watch -p ./my_app');
+  print('  ethos watch -p ./my_app --deep');
   print('');
   print('Options:');
   print(parser.usage);

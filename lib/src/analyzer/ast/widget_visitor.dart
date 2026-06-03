@@ -108,7 +108,7 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
     }
     _record(
       typeName: typeName,
-      arguments: node.argumentList.arguments,
+      arguments: node.argumentList.arguments.toList(),
       offset: node.offset,
       node: node,
       descend: () => super.visitInstanceCreationExpression(node),
@@ -124,7 +124,7 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
     if (isConstructorLike) {
       _record(
         typeName: name,
-        arguments: node.argumentList.arguments,
+        arguments: node.argumentList.arguments.toList(),
         offset: node.offset,
         node: node,
         descend: () => super.visitMethodInvocation(node),
@@ -189,7 +189,9 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
   }
 
   static bool _startsUppercase(String s) {
-    if (s.isEmpty) return false;
+    if (s.isEmpty) {
+      return false;
+    }
     final c = s.codeUnitAt(0);
     return c >= 0x41 && c <= 0x5A; // 'A'..'Z'
   }

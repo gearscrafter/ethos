@@ -184,7 +184,7 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
         final offsetDiff = (usage.offset - widget.offset).abs();
         if (offsetDiff < 5000) {
           return true;
-        } // heuristic threshold
+        }
       }
     }
     return false;
@@ -228,10 +228,7 @@ class CrossFileSemanticLabelsDetector implements DeepDetector {
   }
 
   bool _isWidget(ClassElement element) {
-    final name = element.name;
-    if (name == null || name.isEmpty) {
-      return false;
-    }
+    final name = element.displayName;
     return name.isNotEmpty &&
         name[0].toUpperCase() == name[0] &&
         !name.endsWith('Data') &&

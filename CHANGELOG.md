@@ -1,3 +1,11 @@
+## 0.7.0
+ 
+- **`ethos watch` subcommand** — incremental re-analysis on file save. Performs
+  a full scan on startup, then re-parses only the changed file and recomputes
+  the report from the cached results of all other files. Prints the full report
+  after each change with `▲/▼` coverage deltas and highlights findings in the
+  modified file only.
+  
 ### 0.6.0
 
 - **2 new WCAG detectors** (7 rules covered):

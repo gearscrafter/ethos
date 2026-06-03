@@ -38,12 +38,16 @@ class ResolvedFile extends ParsedFile {
 }
 
 class ProjectIndex {
+  /// All resolved files keyed by absolute path.
   final Map<String, ResolvedFile> filesByPath;
 
+  /// Class name → the file that defines it.
   final Map<String, ResolvedFile> fileByClassName;
 
+  /// Class name → its [ClassElement] (type info + members).
   final Map<String, ClassElement> classElements;
 
+  /// Widget type name → the widget usages across the entire project.
   final Map<String, List<WidgetUsage>> usagesByType;
 
   ProjectIndex({
@@ -61,7 +65,7 @@ class ProjectIndex {
   List<String> subclassesOf(String baseClassName) {
     final result = <String>[];
     for (final entry in classElements.entries) {
-      final supertype = entry.value.supertype?.element.name;
+      final supertype = entry.value.supertype?.element.displayName;
       if (supertype == baseClassName) {
         result.add(entry.key);
       }
