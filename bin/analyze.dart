@@ -129,7 +129,7 @@ Future<void> _runAnalyze(List<String> arguments) async {
         stderr.writeln('❌ Deep analysis did not complete.');
         exit(1);
       }
-      report = reportHolder!;
+      report = reportHolder;
     } else {
       late final CoverageAnalyzer analyzer;
       try {
