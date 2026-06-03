@@ -44,3 +44,7 @@ export 'src/analyzer/deep/analysis_progress.dart';
 export 'src/analyzer/deep/resolved_file.dart';
 export 'src/analyzer/deep/detectors/cross_file_semantic_labels_detector.dart';
 export 'src/analyzer/deep/detectors/resolved_contrast_detector.dart';
+
+// Init
+export 'src/analyzer/init/widget_discovery.dart';
+export 'src/analyzer/init/ethos_yaml_generator.dart';

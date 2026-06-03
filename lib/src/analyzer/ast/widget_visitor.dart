@@ -108,7 +108,7 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
     }
     _record(
       typeName: typeName,
-      arguments: node.argumentList.arguments.toList(),
+      arguments: node.argumentList.arguments,
       offset: node.offset,
       node: node,
       descend: () => super.visitInstanceCreationExpression(node),
@@ -124,7 +124,7 @@ class _WidgetVisitor extends RecursiveAstVisitor<void> {
     if (isConstructorLike) {
       _record(
         typeName: name,
-        arguments: node.argumentList.arguments.toList(),
+        arguments: node.argumentList.arguments,
         offset: node.offset,
         node: node,
         descend: () => super.visitMethodInvocation(node),

@@ -1,3 +1,14 @@
+### 0.6.0
+
+- **2 new WCAG detectors** (7 rules covered):
+
+  - **Non-text Content (1.1.1, Level A):** detects images and icons without an accessible text alternative (`Semantics(label:)`, `semanticLabel`, or explicitly marked as decorative).
+  - **Resize Text (1.4.4, Level AA):** detects fixed `textScaleFactor` and `textScaler` values that ignore system text-size preferences.
+- **`ethos init`** automatically generates a starter `ethos.yaml` with custom widgets and color definitions that require manual configuration.
+- **Public API for `ethos init`** via `WidgetDiscovery.discover()` and `EthosYamlGenerator.generate()`.
+- **Compliance levels updated:** WCAG 1.1.1 added to A/AA/AAA, and WCAG 1.4.4 added to AA/AAA.
+
+
 ### 0.5.1
 
 - Resolve absolute path issue for package_config.json

@@ -59,7 +59,6 @@ class DeepAnalyzer {
   Stream<AnalysisProgress> analyze() async* {
     yield const AnalysisPreparing();
 
-    // ── Readiness check ───────────────────────────────────────────────
     if (!await _isProjectReady()) {
       yield AnalysisWarning(
         message: 'Project not ready for deep analysis — '
@@ -234,10 +233,11 @@ class DeepAnalyzer {
   Future<bool> _isProjectReady() async {
     final absoluteProjectDir = Directory(projectPath).absolute;
     final sep = Platform.pathSeparator;
-    
+
     final pubspec = File('${absoluteProjectDir.path}${sep}pubspec.yaml');
-    final packageConfig = File('${absoluteProjectDir.path}$sep.dart_tool${sep}package_config.json');
-      
+    final packageConfig = File(
+        '${absoluteProjectDir.path}$sep.dart_tool${sep}package_config.json');
+
     return pubspec.existsSync() && packageConfig.existsSync();
   }
 
