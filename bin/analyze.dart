@@ -365,6 +365,8 @@ const _bold = '\x1B[1m';
 const _red = '\x1B[31m';
 const _green = '\x1B[32m';
 const _yellow = '\x1B[33m';
+const _blue = '\x1B[34m';
+const _magenta = '\x1B[35m';
 const _cyan = '\x1B[36m';
 const _dim = '\x1B[2m';
 
@@ -440,9 +442,13 @@ String _generateHumanReport(CoverageReport report) {
     buffer.writeln('$icon ${color ? _b(titleStr) : titleStr}');
     buffer.writeln(
         '   Coverage: ${c.percentage.toStringAsFixed(2)}% (${c.matched}/${c.total}) $statusStr');
+    if (noData && c.indeterminate == 0) {
+      final noDataHint = _noDataHint(c.ruleId);
+      buffer.writeln('   ${color ? _c(noDataHint, _dim) : noDataHint}');
+    }
     if (c.indeterminate > 0) {
-      final indStr =
-          'ⓘ  ${c.indeterminate} indeterminate (value resolved at runtime — not counted)';
+      final hint = _indeterminateHint(c.ruleId);
+      final indStr = 'ⓘ  ${c.indeterminate} indeterminate — $hint';
       buffer.writeln('   ${color ? _c(indStr, _dim) : indStr}');
     }
     buffer.writeln('');
@@ -454,27 +460,40 @@ String _generateHumanReport(CoverageReport report) {
         ? _b('🔎 Findings (${allFindings.length})')
         : '🔎 Findings (${allFindings.length})');
     buffer.writeln('─' * 50);
-    for (final f in allFindings) {
-      final isIndet = f.severity == FindingSeverity.indeterminate;
-      if (isIndet) {
-        final tag = color ? _c('ⓘ INDETERMINATE', _cyan) : 'ⓘ INDETERMINATE';
-        final loc = color
-            ? _c('${f.filePath}:${f.line}:${f.column}', _dim)
-            : '${f.filePath}:${f.line}:${f.column}';
-        buffer.writeln('$tag $loc');
-        buffer.writeln(
-            '   ${color ? _c(f.widgetType, _cyan) : f.widgetType} — ${f.message}');
-      } else {
-        final tag = color ? _c('✗ FAIL', _red) : '✗ FAIL';
-        final loc = color
-            ? '${_c(f.filePath, _dim)}${_c(':${f.line}:${f.column}', _yellow)}'
-            : '${f.filePath}:${f.line}:${f.column}';
-        buffer.writeln('$tag  $loc');
-        buffer.writeln(
-            '   ${color ? _b(_c(f.widgetType, _red)) : f.widgetType} — ${f.message}');
+
+    for (final c in report.coverage.values) {
+      if (c.findings.isEmpty) {
+        continue;
       }
+
+      final ruleColor = _ruleColor(c.ruleId);
+      final ruleIcon = _ruleIcon(c.ruleId);
+
+      final ruleHeader = '$ruleIcon ${c.title} (${c.findings.length})';
+      buffer.writeln(color ? _b(_c(ruleHeader, ruleColor)) : ruleHeader);
+
+      for (final f in c.findings) {
+        final isIndet = f.severity == FindingSeverity.indeterminate;
+        if (isIndet) {
+          final tag = color ? _c('  ⓘ', _cyan) : '  ⓘ';
+          final loc = color
+              ? _c('${f.filePath}:${f.line}:${f.column}', _dim)
+              : '${f.filePath}:${f.line}:${f.column}';
+          buffer.writeln('$tag $loc');
+          buffer.writeln(
+              '     ${color ? _c(f.widgetType, _cyan) : f.widgetType} — ${f.message}');
+        } else {
+          final tag = color ? _c('  ✗', ruleColor) : '  ✗';
+          final loc = color
+              ? '${_c(f.filePath, _dim)}${_c(':${f.line}:${f.column}', _yellow)}'
+              : '${f.filePath}:${f.line}:${f.column}';
+          buffer.writeln('$tag $loc');
+          buffer.writeln(
+              '     ${color ? _c(f.widgetType, ruleColor) : f.widgetType} — ${f.message}');
+        }
+      }
+      buffer.writeln('');
     }
-    buffer.writeln('');
   }
 
   if (report.issues.isNotEmpty) {
@@ -784,6 +803,90 @@ String _deltaStr(double delta) {
 String _timeString(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:'
     '${dt.minute.toString().padLeft(2, '0')}:'
     '${dt.second.toString().padLeft(2, '0')}';
+
+String _ruleColor(String ruleId) {
+  switch (ruleId) {
+    case 'wcag_1_3_1_semantics_label':
+      return _magenta;
+    case 'wcag_1_4_3_contrast_minimum':
+      return _yellow;
+    case 'wcag_2_5_5_target_size_enhanced':
+      return _blue;
+    case 'wcag_2_1_1_keyboard':
+      return _cyan;
+    case 'wcag_2_4_3_focus_order':
+      return _cyan;
+    case 'wcag_1_1_1_non_text_content':
+      return _red;
+    case 'wcag_1_4_4_resize_text':
+      return _green;
+    default:
+      return _red;
+  }
+}
+
+String _ruleIcon(String ruleId) {
+  switch (ruleId) {
+    case 'wcag_1_3_1_semantics_label':
+      return '🏷️ ';
+    case 'wcag_1_4_3_contrast_minimum':
+      return '🎨';
+    case 'wcag_2_5_5_target_size_enhanced':
+      return '👆';
+    case 'wcag_2_1_1_keyboard':
+      return '⌨️ ';
+    case 'wcag_2_4_3_focus_order':
+      return '🔀';
+    case 'wcag_1_1_1_non_text_content':
+      return '🖼️ ';
+    case 'wcag_1_4_4_resize_text':
+      return '🔤';
+    default:
+      return '⚠️ ';
+  }
+}
+
+String _indeterminateHint(String ruleId) {
+  switch (ruleId) {
+    case 'wcag_1_4_3_contrast_minimum':
+      return 'colors from Theme or variables — '
+          'add hex values to color_aliases in ethos.yaml, '
+          'or run with --deep to resolve cross-file references';
+    case 'wcag_1_3_1_semantics_label':
+      return 'labels are runtime variables — '
+          'static analysis cannot verify these; '
+          'runtime verification is on the Ethos roadmap';
+    case 'wcag_2_5_5_target_size_enhanced':
+      return 'size depends on layout constraints at runtime — '
+          'wrap interactive widgets in SizedBox(width:48, height:48) '
+          'or mark them as size_guaranteed: true in ethos.yaml';
+    case 'wcag_1_1_1_non_text_content':
+      return 'labels are runtime variables — '
+          'use literal strings in semanticLabel or Semantics(label:) '
+          'where possible';
+    case 'wcag_1_4_4_resize_text':
+      return 'scale factor is a variable — '
+          'ensure it is never clamped below 1.0';
+    default:
+      return 'value resolved at runtime — not counted in coverage score';
+  }
+}
+
+String _noDataHint(String ruleId) {
+  switch (ruleId) {
+    case 'wcag_1_4_3_contrast_minimum':
+      return 'no Text with inline color literals found — '
+          'add color_aliases in ethos.yaml to enable contrast checks';
+    case 'wcag_1_4_4_resize_text':
+      return '✓ no hardcoded textScaleFactor found — '
+          'your project respects system font-size preferences';
+    case 'wcag_2_5_5_target_size_enhanced':
+      return 'no GestureDetector/InkWell with measurable size found — '
+          'use SizedBox or add widget_aliases in ethos.yaml';
+    default:
+      return 'no widgets in scope found in this project';
+  }
+}
 
 void _printWatchHelp(ArgParser parser) {
   print('Ethos watch — Watch for changes and re-analyze on save');

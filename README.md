@@ -518,6 +518,47 @@ make all the difference — and deep mode can discover many of them automaticall
 
 ---
 
+## Static analysis vs runtime — understanding indeterminate results
+
+Ethos performs **static analysis** — it reads your Dart source files directly,
+without compiling or running your app. This makes it fast (seconds), CI-friendly
+(no device needed), and able to run on any machine.
+
+The tradeoff is that some values only exist at runtime:
+
+| What Ethos can resolve | What requires runtime |
+|------------------------|----------------------|
+| `Color(0xFF000000)` — literal | `Theme.of(context).primaryColor` |
+| `semanticLabel: 'Search'` — literal | `semanticLabel: widget.label` |
+| `SizedBox(width: 48, height: 48)` | `Expanded(child: ...)` |
+| `textScaleFactor: 1.0` — literal | `textScaleFactor: userPrefs.scale` |
+
+When Ethos encounters a value it cannot resolve statically, it marks the widget
+as **indeterminate** — it is neither counted as pass nor fail. This keeps the
+coverage percentage honest: a 90% score means 90% of *verifiable* widgets pass,
+not that the other 10% necessarily fail.
+
+### What to do about indeterminate results
+
+**Color contrast indeterminate** — your colors come from `ThemeData` or a
+design-system variable. Two options:
+- Add hex values to `color_aliases` in `ethos.yaml` (immediate fix).
+- Run `ethos --deep` which follows variable references across files.
+
+**Touch target indeterminate** — your interactive widget's size comes from
+layout constraints. Two options:
+- Wrap it in `SizedBox(width: 48, height: 48)` (best practice anyway).
+- Declare `size_guaranteed: true` in `ethos.yaml` if the widget is
+  internally guaranteed to be large enough.
+
+**Semantic label indeterminate** — your label is a runtime variable
+(`widget.title`, API response, etc.). This is genuinely unverifiable
+statically. Runtime label verification is on the Ethos roadmap —
+a future `ethos_runtime` integration will resolve these by inspecting
+the live `SemanticsTree` during Flutter integration tests.
+
+---
+
 ## Supported rules
 
 Seven built-in rules, all backed by `RecursiveAstVisitor` on real Dart AST.
@@ -675,6 +716,7 @@ ethos --deep -v              # deep mode with progress
 ethos init                   # generate ethos.yaml here
 ethos watch                  # watch for changes here
 ethos watch --deep           # watch + deep
+ethos --version              # print installed version
 ```
 
 Or pass `-p` explicitly from anywhere:
@@ -694,6 +736,7 @@ Options (analyze):
                        Slower but more precise. Requires `flutter pub get`.
                        Falls back to standard mode if project is not ready.
   -v, --verbose        Show progress details (written to stderr)
+  -V, --version        Print version and exit
   -h, --help           Show this help
 
 Options (watch):
@@ -823,6 +866,13 @@ ethos/
   and transitions that don't respect `MediaQuery.disableAnimations`.
 - Configurable rule subset — run only the rules you care about.
 - Stable public API with full WCAG 2.2 Level AA coverage.
+
+### Future
+- **`ethos_runtime`** — Flutter integration test companion that inspects the
+  live `SemanticsTree` to resolve widgets that static analysis marks as
+  indeterminate: runtime labels (`widget.title`, API data), layout-dependent
+  sizes (`Expanded`, `MediaQuery`), and theme-resolved colors. Results merge
+  with the static report into a single unified coverage score.
 
 ---
 

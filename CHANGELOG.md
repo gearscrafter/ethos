@@ -1,3 +1,7 @@
+## 0.8.4
+
+- **Findings grouped by rule** — the `🔎 Findings` section now groups results by WCAG rule instead of a flat list. 
+
 ## 0.8.3
 
 - **`ethos --version`** — new flag (`--version` / `-V` / `ethos version`)
