@@ -1,3 +1,18 @@
+## 0.9.1
+ 
+- Added a
+PropertyAccess path in _classifyExpression that checks whether the
+root target starts with $ or matches known localization patterns
+(strings, l10n, intl, AppStrings, etc.).
+Affects SemanticLabelsDetector and NonTextContentDetector.
+
+## 0.9.0
+ 
+- **`--suggest` flag** — prints step-by-step fixes for every indeterminate
+  rule after the report, showing exactly what to change in code or
+  `ethos.yaml` to make the finding verifiable by static analysis on the
+  next run. Without the flag, a one-line hint appears at the bottom.
+
 ## 0.8.4
 
 - **Findings grouped by rule** — the `🔎 Findings` section now groups results by WCAG rule instead of a flat list. 

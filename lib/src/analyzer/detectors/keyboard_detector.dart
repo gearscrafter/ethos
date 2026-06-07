@@ -47,6 +47,9 @@ class KeyboardDetector implements RuleDetector {
     'KeyboardListener',
     'RawKeyboardListener',
     'FullscreenKeyboardListener',
+    'MouseRegion',
+    'Actions',
+    'Semantics',
   };
 
   @override

@@ -46,6 +46,18 @@ class ColorResolver {
       }
     }
 
+    if (expr is MethodInvocation) {
+      final method = expr.methodName.name;
+      if (method == 'withOpacity' ||
+          method == 'withAlpha' ||
+          method == 'withValues') {
+        final baseExpr = expr.target;
+        if (baseExpr is Expression) {
+          return resolve(baseExpr);
+        }
+      }
+    }
+
     return null;
   }
 

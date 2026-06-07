@@ -161,20 +161,98 @@ class NonTextContentDetector implements RuleDetector {
     return _LabelState.missing;
   }
 
-  bool _isNonEmptyLiteral(Expression expr) {
+  _LabelState _classifyLabelExpr(Expression? expr) {
+    if (expr == null) {
+      return _LabelState.missing;
+    }
+
     if (expr is StringLiteral) {
       final v = expr.stringValue;
-      return v != null && v.trim().isNotEmpty;
+      if (v == null) {
+        return _LabelState.indeterminate;
+      }
+      return v.trim().isEmpty ? _LabelState.empty : _LabelState.literalNonEmpty;
     }
-    return false;
+
+    if (expr is NullLiteral) {
+      return _LabelState.missing;
+    }
+
+    if (expr is BinaryExpression && expr.operator.lexeme == '??') {
+      final right = expr.rightOperand;
+      if (right is StringLiteral) {
+        final fallback = right.stringValue ?? '';
+        return fallback.trim().isEmpty
+            ? _LabelState.empty
+            : _LabelState.literalNonEmpty;
+      }
+    }
+
+    if (expr is ConditionalExpression) {
+      final t = _classifyLabelExpr(expr.thenExpression);
+      final e = _classifyLabelExpr(expr.elseExpression);
+      if (t == _LabelState.empty || e == _LabelState.empty) {
+        return _LabelState.empty;
+      }
+      if (t == _LabelState.literalNonEmpty &&
+          e == _LabelState.literalNonEmpty) {
+        return _LabelState.literalNonEmpty;
+      }
+    }
+
+    if (expr is SimpleIdentifier && _looksLikeConstant(expr.name)) {
+      return _LabelState.literalNonEmpty;
+    }
+
+    if (expr is PrefixedIdentifier) {
+      if (_looksLikeStringsClass(expr.prefix.name) ||
+          _looksLikeConstant(expr.identifier.name)) {
+        return _LabelState.literalNonEmpty;
+      }
+    }
+
+    return _LabelState.indeterminate;
+  }
+
+  static bool _looksLikeConstant(String name) {
+    if (name.isEmpty) {
+      return false;
+    }
+    if (name.startsWith('k') &&
+        name.length > 1 &&
+        name[1] == name[1].toUpperCase()) {
+      return true;
+    }
+    if (name == name.toUpperCase() && name.contains('_')) {
+      return true;
+    }
+    return name.endsWith('Label') ||
+        name.endsWith('Text') ||
+        name.endsWith('Title') ||
+        name.endsWith('String') ||
+        name.endsWith('Semantic');
+  }
+
+  static bool _looksLikeStringsClass(String name) {
+    final lower = name.toLowerCase();
+    return lower == 'strings' ||
+        lower == '\$strings' ||
+        lower == 's' ||
+        lower == 'l10n' ||
+        lower == '\$l10n' ||
+        lower.contains('string') ||
+        lower.contains('local') ||
+        lower.contains('intl') ||
+        lower.startsWith('\$');
+  }
+
+  bool _isNonEmptyLiteral(Expression expr) {
+    return _classifyLabelExpr(expr) == _LabelState.literalNonEmpty;
   }
 
   bool _isEmptyLiteral(Expression expr) {
-    if (expr is StringLiteral) {
-      final v = expr.stringValue;
-      return v != null && v.trim().isEmpty;
-    }
-    return false;
+    final state = _classifyLabelExpr(expr);
+    return state == _LabelState.empty;
   }
 
   String? _ctorNameOf(AstNode node) {

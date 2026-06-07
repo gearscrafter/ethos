@@ -197,7 +197,88 @@ class SemanticLabelsDetector implements RuleDetector {
           ? _LabelState.empty
           : _LabelState.literalNonEmpty;
     }
+
+    if (expr is NullLiteral) {
+      return _LabelState.missing;
+    }
+
+    if (expr is BinaryExpression && expr.operator.lexeme == '??') {
+      final right = expr.rightOperand;
+      if (right is StringLiteral) {
+        final fallback = right.stringValue ?? '';
+        return fallback.trim().isEmpty
+            ? _LabelState.empty
+            : _LabelState.literalNonEmpty;
+      }
+    }
+
+    if (expr is ConditionalExpression) {
+      final thenState = _classifyExpression(expr.thenExpression);
+      final elseState = _classifyExpression(expr.elseExpression);
+      if (thenState == _LabelState.empty || elseState == _LabelState.empty) {
+        return _LabelState.empty;
+      }
+      if (thenState == _LabelState.missing ||
+          elseState == _LabelState.missing) {
+        return _LabelState.empty;
+      }
+      if (thenState == _LabelState.literalNonEmpty &&
+          elseState == _LabelState.literalNonEmpty) {
+        return _LabelState.literalNonEmpty;
+      }
+    }
+
+    if (expr is SimpleIdentifier) {
+      final name = expr.name;
+      if (_looksLikeConstant(name)) {
+        return _LabelState.literalNonEmpty;
+      }
+    }
+
+    if (expr is PrefixedIdentifier) {
+      final prefix = expr.prefix.name;
+      final id = expr.identifier.name;
+      if (_looksLikeStringsClass(prefix) || _looksLikeConstant(id)) {
+        return _LabelState.literalNonEmpty;
+      }
+    }
+
     return _LabelState.indeterminate; // variable / method call / etc.
+  }
+
+  static bool _looksLikeConstant(String name) {
+    if (name.isEmpty) {
+      return false;
+    }
+    if (name.startsWith('k') &&
+        name.length > 1 &&
+        name[1] == name[1].toUpperCase()) {
+      return true;
+    }
+    if (name == name.toUpperCase() && name.contains('_')) {
+      return true;
+    }
+    if (name.endsWith('Label') ||
+        name.endsWith('Text') ||
+        name.endsWith('Title') ||
+        name.endsWith('String') ||
+        name.endsWith('Semantic')) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool _looksLikeStringsClass(String name) {
+    final lower = name.toLowerCase();
+    return lower == 'strings' ||
+        lower == '\$strings' ||
+        lower == 's' ||
+        lower == 'l10n' ||
+        lower == '\$l10n' ||
+        lower.contains('string') ||
+        lower.contains('local') ||
+        lower.contains('intl') ||
+        lower.startsWith('\$');
   }
 
   AstNode? _findEnclosingSemantics(AstNode node) {
