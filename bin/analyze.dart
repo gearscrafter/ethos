@@ -62,6 +62,12 @@ Future<void> _runAnalyze(List<String> arguments, UpdateChecker updateChecker,
         abbr: 'v',
         help: 'Print progress details (written to stderr)',
         defaultsTo: false)
+    ..addFlag('suggest',
+        abbr: 's',
+        help: 'Show step-by-step suggestions to make indeterminate findings '
+            'verifiable by static analysis. Useful during development; '
+            'not recommended for CI output.',
+        negatable: false)
     ..addFlag('version',
         abbr: 'V', help: 'Print version and exit', negatable: false)
     ..addFlag('help', abbr: 'h', help: 'Show help message', negatable: false);
@@ -84,6 +90,7 @@ Future<void> _runAnalyze(List<String> arguments, UpdateChecker updateChecker,
     final outputPath = results['output'] as String?;
     final deepMode = results['deep'] as bool;
     final verbose = results['verbose'] as bool;
+    final suggest = results['suggest'] as bool;
 
     if (verbose) {
       stderr.writeln('📋 Ethos — Accessibility Coverage Analyzer');
@@ -203,7 +210,7 @@ Future<void> _runAnalyze(List<String> arguments, UpdateChecker updateChecker,
       case 'coverage':
         reportOutput = _generateCoverageReport(report);
       default:
-        reportOutput = _generateHumanReport(report);
+        reportOutput = _generateHumanReport(report, suggest: suggest);
     }
 
     if (outputPath != null) {
@@ -375,7 +382,7 @@ String _b(String text) => '$_bold$text$_reset';
 
 bool _supportsAnsi() => stdout.hasTerminal;
 
-String _generateHumanReport(CoverageReport report) {
+String _generateHumanReport(CoverageReport report, {bool suggest = false}) {
   final color = _supportsAnsi();
   final buffer = StringBuffer();
 
@@ -505,6 +512,73 @@ String _generateHumanReport(CoverageReport report) {
     }
   }
 
+  if (suggest) {
+    final suggestions = SuggestionEngine.generate(report);
+    buffer.writeln('');
+    if (suggestions.isEmpty) {
+      buffer.writeln(color ? _b('💡 Suggestions') : '💡 Suggestions');
+      buffer.writeln('─' * 50);
+      buffer.writeln('  No indeterminate findings — nothing to suggest. ✅');
+    } else {
+      buffer.writeln(color ? _b('💡 Suggestions') : '💡 Suggestions');
+      buffer.writeln('─' * 50);
+      buffer.writeln(color
+          ? _c(
+              '  How to make indeterminate findings verifiable by static '
+              'analysis on the next run:',
+              _dim)
+          : '  How to make indeterminate findings verifiable by static '
+              'analysis on the next run:');
+      buffer.writeln('');
+
+      for (final s in suggestions) {
+        final ruleColor = _ruleColor(s.ruleId);
+        final header = '${_ruleIcon(s.ruleId)} ${s.ruleTitle} '
+            '(${s.indeterminateCount} indeterminate)';
+        buffer.writeln(color ? _b(_c(header, ruleColor)) : header);
+        buffer.writeln('  ${color ? _c(s.problem, _dim) : s.problem}');
+        buffer.writeln('');
+
+        for (var j = 0; j < s.fixes.length; j++) {
+          final fix = s.fixes[j];
+          buffer.writeln(color ? '  ${_b(fix.label)}' : '  ${fix.label}');
+          buffer.writeln(
+              '  ${color ? _c(fix.description, _dim) : fix.description}');
+
+          if (fix.codeExample != null) {
+            buffer.writeln('');
+            for (final line in fix.codeExample!.trim().split('\n')) {
+              buffer.writeln(color ? '    ${_c(line, _dim)}' : '    $line');
+            }
+          }
+          if (fix.yamlExample != null) {
+            buffer.writeln('');
+            for (final line in fix.yamlExample!.trim().split('\n')) {
+              buffer.writeln(color ? '    ${_c(line, _cyan)}' : '    $line');
+            }
+          }
+          if (j < s.fixes.length - 1) {
+            buffer.writeln('');
+          }
+        }
+        buffer.writeln('');
+      }
+    }
+  } else {
+    final totalIndeterminate =
+        report.coverage.values.fold(0, (sum, c) => sum + c.indeterminate);
+    if (totalIndeterminate > 0) {
+      buffer.writeln('');
+      buffer.writeln(color
+          ? _c(
+              '  💡 Run with --suggest to get step-by-step fixes for '
+              '$totalIndeterminate indeterminate finding(s).',
+              _dim)
+          : '  💡 Run with --suggest to get step-by-step fixes for '
+              '$totalIndeterminate indeterminate finding(s).');
+    }
+  }
+
   return buffer.toString();
 }
 
@@ -581,6 +655,9 @@ void _printAnalyzeHelp(ArgParser parser) {
   print('Examples:');
   print('  ethos                        # analyze current directory');
   print('  ethos --deep -v              # deep mode in current directory');
+  print(
+      '  ethos --suggest              # show fixes for indeterminate findings');
+  print('  ethos --deep --suggest       # deep mode + suggestions');
   print('  ethos -p ./my_app');
   print('  ethos -p ./my_app --deep -v');
   print('  ethos -p ./my_app -r json -o report.json');
@@ -858,8 +935,11 @@ String _indeterminateHint(String ruleId) {
           'runtime verification is on the Ethos roadmap';
     case 'wcag_2_5_5_target_size_enhanced':
       return 'size depends on layout constraints at runtime — '
-          'wrap interactive widgets in SizedBox(width:48, height:48) '
-          'or mark them as size_guaranteed: true in ethos.yaml';
+          'WCAG 2.5.5 exempts targets whose size is determined by the layout '
+          'engine (animations, full-screen regions, inherited constraints). '
+          'For verifiable targets, wrap in SizedBox(width:48, height:48) '
+          'or declare size_guaranteed: true in ethos.yaml. '
+          'Remaining cases require runtime measurement (ethos_runtime, roadmap)';
     case 'wcag_1_1_1_non_text_content':
       return 'labels are runtime variables — '
           'use literal strings in semanticLabel or Semantics(label:) '

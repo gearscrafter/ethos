@@ -46,12 +46,22 @@ class EthosYamlGenerator {
         .writeln('#   ${result.totalColors} color expression(s) used 3+ times');
     buffer.writeln('#');
     buffer.writeln('# What to do:');
+    buffer.writeln('#   1. For each widget_alias:');
+    buffer.writeln('#      - Set role: (button, text, or input)');
+    buffer.writeln(
+        '#      - Uncomment label_arg if the widget has a semantic label argument');
+    buffer.writeln(
+        '#      - Uncomment size_guaranteed if the widget is always >= 48x48px');
+    buffer.writeln(
+        '#      - Uncomment keyboard_ready if the widget handles keyboard events');
+    buffer.writeln('#   2. For each color_alias: fill in the hex values.');
+    buffer.writeln(
+        '#   3. Run `ethos -v` to see the effect on your coverage score.');
+    buffer.writeln('#');
+    buffer.writeln(
+        '#  Each entry includes suggestions based on its name and usage.');
     buffer
-        .writeln('#   1. For each widget_alias: set role, uncomment label_arg');
-    buffer.writeln('#      and size/keyboard fields if applicable.');
-    buffer.writeln('#   2. For each color_alias: uncomment and fill in');
-    buffer.writeln('#      foreground and background hex values.');
-    buffer.writeln('#   3. Run `ethos -p . -v` to see the effect.');
+        .writeln('#    Look for "Suggestion:" comments for specific guidance.');
     buffer.writeln('#');
     buffer.writeln('# Docs: https://github.com/gearscrafter/ethos');
     buffer.writeln('');
@@ -67,17 +77,51 @@ class EthosYamlGenerator {
     for (final entry in widgetUsages.entries) {
       final name = entry.key;
       final count = entry.value;
+      final hints = _widgetHints(name);
 
+      buffer.writeln('  # ──────────────────────────────────────────');
       buffer.writeln('  # $name — used $count time${count == 1 ? "" : "s"}');
+
+      if (hints.suggestion != null) {
+        buffer.writeln('  #');
+        buffer.writeln('  # 💡 Suggestion: ${hints.suggestion}');
+      }
+      buffer.writeln('  #');
+
       buffer.writeln('  $name:');
-      buffer.writeln('    role: button         '
-          '# button | text | input — REQUIRED');
-      buffer.writeln('    # label_arg: ???     '
-          '# e.g. semanticLabel, a11yLabel, label');
-      buffer.writeln('    # size_guaranteed: true   '
-          '# uncomment if already >= 48x48 internally');
-      buffer.writeln('    # keyboard_ready: true    '
-          '# uncomment if keyboard-operable out of the box');
+      buffer.writeln('    role: ${hints.likelyRole}'
+          '${hints.roleComment != null ? "    # ${hints.roleComment}" : "    # button | text | input — REQUIRED"}');
+
+      if (hints.likelyLabelArg != null) {
+        buffer.writeln('    label_arg: ${hints.likelyLabelArg}'
+            '    #  likely label argument — verify in your widget');
+      } else {
+        buffer.writeln('    # label_arg: ???'
+            '    # e.g. semanticLabel, a11yLabel, label, title');
+        buffer.writeln('    #'
+            '             # To make indeterminate labels verifiable,'
+            ' set this to your label argument name');
+      }
+
+      if (hints.likelySizeGuaranteed) {
+        buffer.writeln('    size_guaranteed: true'
+            '    #  "${hints.sizeReason}" — set to true if >= 48x48px');
+      } else {
+        buffer.writeln('    # size_guaranteed: true'
+            '   # uncomment if always >= 48x48px internally');
+        buffer.writeln('    #'
+            '                      # This converts 911 indeterminate touch'
+            ' targets to verifiable PASS');
+      }
+
+      if (hints.likelyKeyboardReady) {
+        buffer.writeln('    keyboard_ready: true'
+            '    #  "${hints.keyboardReason}"');
+      } else {
+        buffer.writeln('    # keyboard_ready: true'
+            '   # uncomment if keyboard-operable out of the box');
+      }
+
       buffer.writeln('');
     }
   }
@@ -89,30 +133,182 @@ class EthosYamlGenerator {
     buffer.writeln('color_aliases:');
     buffer.writeln(
         '  # Uncomment each entry and fill in your actual hex values.');
-    buffer.writeln('  # foreground: required. background: optional but needed');
-    buffer.writeln('  # for contrast ratio calculation.');
+    buffer.writeln('  # foreground: required (text color).');
+    buffer.writeln(
+        '  # background: optional but needed for contrast ratio calculation.');
+    buffer.writeln('  #');
+    buffer.writeln('  #  To find hex values:');
+    buffer.writeln('  #    - Check your design system / Figma tokens');
+    buffer.writeln('  #    - Search for the variable name in your codebase');
+    buffer.writeln('  #    - Use a color picker on your app\'s UI');
+    buffer
+        .writeln('  #    - Run `ethos --deep` to attempt automatic resolution');
     buffer.writeln('');
 
     for (final entry in colorExpressions.entries) {
       final expr = entry.key;
       final count = entry.value;
-
       final yamlKey = _needsQuotes(expr) ? '"$expr"' : expr;
+      final colorHint = _colorHint(expr);
 
       buffer.writeln('  # used $count time${count == 1 ? "" : "s"}');
+      if (colorHint != null) {
+        buffer.writeln('  #  $colorHint');
+      }
       buffer.writeln('  # $yamlKey:');
-      buffer.writeln('  #   foreground: "#REPLACE_ME"   # text color');
-      buffer.writeln('  #   background: "#REPLACE_ME"   # background color');
+      buffer.writeln(
+          '  #   foreground: "#REPLACE_ME"   # text color — find in your theme/design system');
+      buffer.writeln(
+          '  #   background: "#REPLACE_ME"   # background color (optional)');
       buffer.writeln('');
     }
   }
 
   static void _writeRuleOverridesExample(StringBuffer buffer) {
+    buffer.writeln('# ──────────────────────────────────────────');
     buffer.writeln('# Optional: override per-rule thresholds.');
+    buffer
+        .writeln('# Useful if you want stricter CI gates for specific rules.');
     buffer.writeln('# rule_overrides:');
     buffer.writeln('#   wcag_1_4_3_contrast_minimum:');
-    buffer.writeln('#     critical_threshold: 95');
+    buffer.writeln(
+        '#     critical_threshold: 95   # fail CI if contrast drops below 95%');
+    buffer.writeln('#   wcag_1_3_1_semantics_label:');
+    buffer.writeln(
+        '#     critical_threshold: 90   # fail CI if semantic labels drop below 90%');
   }
+
+  static _WidgetHints _widgetHints(String name) {
+    final lower = name.toLowerCase();
+
+    String likelyRole = 'button';
+    String? roleComment;
+
+    if (_containsAny(lower, [
+      'textfield',
+      'input',
+      'edittext',
+      'search',
+      'form',
+      'picker',
+      'dropdown',
+      'select',
+      'combobox'
+    ])) {
+      likelyRole = 'input';
+      roleComment = 'looks like an input widget';
+    } else if (_containsAny(lower, [
+      'text',
+      'label',
+      'title',
+      'heading',
+      'paragraph',
+      'caption',
+      'subtitle',
+      'body'
+    ])) {
+      likelyRole = 'text';
+      roleComment = 'looks like a text display widget';
+    } else if (_containsAny(lower, [
+      'btn',
+      'button',
+      'cta',
+      'action',
+      'tap',
+      'click',
+      'press',
+      'fab',
+      'chip',
+      'tile',
+      'item',
+      'card',
+      'icon',
+      'link',
+      'nav',
+      'menu'
+    ])) {
+      likelyRole = 'button';
+      roleComment = 'looks like an interactive button widget';
+    }
+
+    String? likelyLabelArg;
+
+    if (_containsAny(lower, ['icon', 'fab', 'action'])) {
+      likelyLabelArg = 'semanticLabel';
+    } else if (_containsAny(lower, ['btn', 'button', 'cta', 'link'])) {
+      likelyLabelArg = 'label';
+    } else if (_containsAny(lower, ['nav', 'menu', 'item', 'tile'])) {
+      likelyLabelArg = 'label';
+    }
+
+    bool likelySizeGuaranteed = false;
+    String? sizeReason;
+
+    if (_containsAny(lower, ['fab', 'floatingaction', 'iconbutton'])) {
+      likelySizeGuaranteed = true;
+      sizeReason = 'Material FAB/IconButton are always >= 48x48px';
+    } else if (_containsAny(lower, ['btn', 'button', 'cta'])) {
+      likelySizeGuaranteed = false;
+    }
+
+    bool likelyKeyboardReady = false;
+    String? keyboardReason;
+
+    if (_containsAny(lower, ['btn', 'button', 'cta', 'action'])) {
+      likelyKeyboardReady = false;
+    }
+
+    String? suggestion;
+
+    if (likelyRole == 'button' && likelyLabelArg == null) {
+      suggestion =
+          'Find which argument carries the accessible label for this widget '
+          '(e.g. label, title, semanticLabel, a11yLabel) and set label_arg. '
+          'This will convert indeterminate semantic label findings to verifiable PASS/FAIL.';
+    } else if (likelyRole == 'button' && !likelySizeGuaranteed) {
+      suggestion = 'If this widget always renders at >= 48x48 logical pixels, '
+          'set size_guaranteed: true to convert indeterminate touch target '
+          'findings to PASS.';
+    } else if (likelyRole == 'input') {
+      suggestion = 'Input widgets are checked for focus order (WCAG 2.4.3). '
+          'Ensure your Form contains explicit focus management (FocusNode or autofocus).';
+    }
+
+    return _WidgetHints(
+      likelyRole: likelyRole,
+      roleComment: roleComment,
+      likelyLabelArg: likelyLabelArg,
+      likelySizeGuaranteed: likelySizeGuaranteed,
+      sizeReason: sizeReason,
+      likelyKeyboardReady: likelyKeyboardReady,
+      keyboardReason: keyboardReason,
+      suggestion: suggestion,
+    );
+  }
+
+  static String? _colorHint(String expr) {
+    final lower = expr.toLowerCase();
+    if (_containsAny(lower, ['primary', 'brand', 'accent'])) {
+      return 'Primary/brand color — check your ThemeData.colorScheme.primary';
+    }
+    if (_containsAny(lower, ['secondary', 'surface'])) {
+      return 'Secondary/surface color — check your ThemeData.colorScheme';
+    }
+    if (_containsAny(lower, ['text', 'foreground', 'onprimary', 'onsurface'])) {
+      return 'Text color — check your ThemeData.textTheme or colorScheme.onSurface';
+    }
+    if (_containsAny(lower, ['background', 'scaffold', 'canvas'])) {
+      return 'Background color — check your ThemeData.scaffoldBackgroundColor';
+    }
+    if (_containsAny(lower, ['styles', 'tokens', 'palette', 'colors'])) {
+      return 'Design system token — search for the definition in your codebase '
+          'or check your Figma/design tokens file';
+    }
+    return null;
+  }
+
+  static bool _containsAny(String str, List<String> terms) =>
+      terms.any((t) => str.contains(t));
 
   static bool _needsQuotes(String key) {
     const specials = [
@@ -139,4 +335,26 @@ class EthosYamlGenerator {
     ];
     return specials.any((c) => key.contains(c));
   }
+}
+
+class _WidgetHints {
+  final String likelyRole;
+  final String? roleComment;
+  final String? likelyLabelArg;
+  final bool likelySizeGuaranteed;
+  final String? sizeReason;
+  final bool likelyKeyboardReady;
+  final String? keyboardReason;
+  final String? suggestion;
+
+  const _WidgetHints({
+    required this.likelyRole,
+    this.roleComment,
+    this.likelyLabelArg,
+    required this.likelySizeGuaranteed,
+    this.sizeReason,
+    required this.likelyKeyboardReady,
+    this.keyboardReason,
+    this.suggestion,
+  });
 }

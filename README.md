@@ -807,7 +807,7 @@ import 'package:ethos/ethos_test.dart';  // matchers + helpers — use in tests 
 ```
 ethos/
 ├── bin/
-│   └── analyze.dart               # CLI (analyze + init + watch subcommands)
+│   └── analyze.dart               # CLI (analyze + init + watch + --version + --suggest)
 ├── lib/
 │   ├── ethos.dart                 # Public barrel export
 │   └── src/
@@ -818,6 +818,8 @@ ethos/
 │       ├── specs/v1/
 │       │   ├── wcag_2_2.yaml          # Source spec — edit this
 │       │   └── wcag_2_2_embedded.dart # Generated constant — do not edit
+│       ├── suggestions/               # Remediation guidance
+│       │   └── suggestion_engine.dart # Generates step-by-step fixes for indeterminate findings
 │       └── analyzer/
 │           ├── coverage_analyzer.dart  # Standard engine
 │           ├── spec_loader.dart

@@ -12,8 +12,39 @@ class TouchTargetDetector implements RuleDetector {
   static const double _minSize = 48.0;
 
   static const _autoPass = {
+    'ElevatedButton',
+    'FilledButton',
+    'FilledTonalButton',
+    'OutlinedButton',
+    'TextButton',
+    'SegmentedButton',
     'IconButton',
     'FloatingActionButton',
+    'ExtendedFloatingActionButton',
+    'ListTile',
+    'CheckboxListTile',
+    'SwitchListTile',
+    'RadioListTile',
+    'ExpansionTile',
+    'NavigationDestination',
+    'NavigationRailDestination',
+    'NavigationDrawerDestination',
+    'DrawerHeader',
+    'Tab',
+    'Checkbox',
+    'Radio',
+    'Switch',
+    'DropdownButton',
+    'DropdownMenuItem',
+    'MenuItemButton',
+    'SubmenuButton',
+    'PopupMenuButton',
+    'PopupMenuItem',
+    'Chip',
+    'FilterChip',
+    'ActionChip',
+    'ChoiceChip',
+    'InputChip',
   };
 
   static const _customInteractive = {
@@ -108,8 +139,26 @@ class TouchTargetDetector implements RuleDetector {
           : _SizeVerdict.fail;
     }
 
+    AstNode? current = widget.node.parent;
+    while (current != null) {
+      final name = _ctorName(current);
+      if (name != null && _guaranteedSizeContext.contains(name)) {
+        return _SizeVerdict.pass;
+      }
+      if (name != null && _customInteractive.contains(name)) {
+        break;
+      }
+      current = current.parent;
+    }
+
     final sizer = _findEnclosingSizer(widget.node);
     if (sizer == null) return _SizeVerdict.unknown;
+
+    final sizerName = _ctorName(sizer);
+
+    if (sizerName == 'ConstrainedBox') {
+      return _resolveConstrainedBox(sizer);
+    }
 
     final w = _numArg(_namedArg(sizer, 'width'));
     final h = _numArg(_namedArg(sizer, 'height'));
@@ -125,10 +174,43 @@ class TouchTargetDetector implements RuleDetector {
     while (current != null) {
       final name = _ctorName(current);
       if (name == 'SizedBox' || name == 'Container') return current;
+      if (name == 'ConstrainedBox') return current;
       if (name != null && _customInteractive.contains(name)) return null;
+      if (name != null && _guaranteedSizeContext.contains(name)) return null;
       current = current.parent;
     }
     return null;
+  }
+
+  static const _guaranteedSizeContext = {
+    'AppBar',
+    'SliverAppBar',
+    'BottomAppBar',
+    'BottomNavigationBar',
+    'NavigationBar',
+    'NavigationRail',
+    'Drawer',
+    'TabBar',
+    'BottomTabBar',
+  };
+
+  _SizeVerdict _resolveConstrainedBox(AstNode node) {
+    final constraintsArg = _namedArg(node, 'constraints');
+    if (constraintsArg == null) return _SizeVerdict.unknown;
+    final src = constraintsArg.toSource();
+    final minW = _extractNamedDouble(src, 'minWidth');
+    final minH = _extractNamedDouble(src, 'minHeight');
+    if (minW != null && minH != null && minW >= _minSize && minH >= _minSize) {
+      return _SizeVerdict.pass;
+    }
+    return _SizeVerdict.unknown;
+  }
+
+  double? _extractNamedDouble(String source, String paramName) {
+    final pattern = RegExp('$paramName\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)');
+    final match = pattern.firstMatch(source);
+    if (match == null) return null;
+    return double.tryParse(match.group(1)!);
   }
 
   double? _numArg(Expression? expr) {
